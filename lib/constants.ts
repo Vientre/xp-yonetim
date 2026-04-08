@@ -14,20 +14,20 @@ export function getBusinessName(id: string): string {
 
 // Hardcoded expense categories
 export const EXPENSE_CATEGORIES = [
+  { id: "personel", name: "Personel", color: "#8b5cf6" },
+  { id: "yemek", name: "Yemek", color: "#f97316" },
+  { id: "tip", name: "Tip", color: "#f59e0b" },
   { id: "kira", name: "Kira", color: "#ef4444" },
   { id: "elektrik", name: "Elektrik", color: "#f97316" },
   { id: "su", name: "Su", color: "#3b82f6" },
   { id: "dogalgaz", name: "Doğalgaz", color: "#eab308" },
-  { id: "personel", name: "Personel", color: "#8b5cf6" },
   { id: "malzeme", name: "Malzeme/Sarf", color: "#06b6d4" },
   { id: "bakim", name: "Bakım/Onarım", color: "#84cc16" },
   { id: "pazarlama", name: "Pazarlama", color: "#ec4899" },
   { id: "vergi-sgk", name: "Vergi/SGK", color: "#6b7280" },
-  { id: "yemek", name: "Yemek", color: "#f97316" },
   { id: "reklam", name: "Reklam", color: "#a855f7" },
   { id: "alisveris", name: "Alışveriş", color: "#14b8a6" },
   { id: "fatura-diger", name: "Fatura (Diğer)", color: "#64748b" },
-  { id: "tip", name: "Tip", color: "#f59e0b" },
   { id: "diger", name: "Diğer", color: "#94a3b8" },
 ] as const
 
