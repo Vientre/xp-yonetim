@@ -98,9 +98,9 @@ export default function DailyEntryPage() {
     defaultValues: {
       businessId: "",
       date: format(new Date(), "yyyy-MM-dd"),
-      cashIncome: "0",
-      cardIncome: "0",
-      ticketIncome: "0",
+      cashIncome: "",
+      cardIncome: "",
+      ticketIncome: "",
       notes: "",
       expenses: [],
     },
@@ -256,7 +256,7 @@ export default function DailyEntryPage() {
                         type="number"
                         step="0.01"
                         min="0"
-                        placeholder="0.00"
+                        placeholder="Tutar girin"
                         {...register("cashIncome")}
                         className="text-right"
                       />
@@ -267,7 +267,7 @@ export default function DailyEntryPage() {
                         type="number"
                         step="0.01"
                         min="0"
-                        placeholder="0.00"
+                        placeholder="Tutar girin"
                         {...register("cardIncome")}
                         className="text-right"
                       />
@@ -278,7 +278,7 @@ export default function DailyEntryPage() {
                         type="number"
                         step="0.01"
                         min="0"
-                        placeholder="0.00"
+                        placeholder="Tutar girin"
                         {...register("ticketIncome")}
                         className="text-right"
                       />

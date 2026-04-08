@@ -85,6 +85,7 @@ interface DashboardData {
   comparison: Comparison
   businessSummary: BusinessSummary[]
   expenseByCategory: Array<{ name: string; color: string; total: number }>
+  expenseByCategoryPerBusiness: Record<string, Array<{ name: string; color: string; total: number }>>
   dailyTrend: Array<{ date: string; income: number; expense: number }>
   mealSummary: { totalQuantity: number; totalPrice: number; orderCount: number }
   missingDays: Array<{ businessName: string; date: string }>
@@ -296,43 +297,33 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Gider Kategorileri</CardTitle>
+            <CardTitle className="text-base">Gider Kategorileri — İşletme Bazlı</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? <Skeleton className="h-48 w-full" /> : (
-              data?.expenseByCategory && data.expenseByCategory.length > 0 ? (
-                <div className="flex items-center gap-4">
-                  <ResponsiveContainer width="50%" height={180}>
-                    <PieChart>
-                      <Pie
-                        data={data.expenseByCategory.slice(0, 6)}
-                        dataKey="total"
-                        nameKey="name"
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={40}
-                        outerRadius={70}
-                      >
-                        {data.expenseByCategory.slice(0, 6).map((entry, i) => (
-                          <Cell key={i} fill={entry.color} />
+              <div className="space-y-4">
+                {ALL_BUSINESSES.map((biz) => {
+                  const cats = data?.expenseByCategoryPerBusiness?.[biz.id] ?? []
+                  if (cats.length === 0) return null
+                  return (
+                    <div key={biz.id}>
+                      <p className="text-xs font-semibold text-muted-foreground mb-1.5">{biz.name}</p>
+                      <div className="space-y-1">
+                        {cats.slice(0, 5).map((cat, i) => (
+                          <div key={i} className="flex items-center gap-2 text-xs">
+                            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
+                            <span className="flex-1 truncate text-muted-foreground">{cat.name}</span>
+                            <span className="font-medium">{formatCurrency(cat.total)}</span>
+                          </div>
                         ))}
-                      </Pie>
-                      <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="flex-1 space-y-1.5">
-                    {data.expenseByCategory.slice(0, 6).map((cat, i) => (
-                      <div key={i} className="flex items-center gap-2 text-xs">
-                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
-                        <span className="flex-1 truncate text-muted-foreground">{cat.name}</span>
-                        <span className="font-medium">{formatCurrency(cat.total)}</span>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-10">Gider kaydı yok</p>
-              )
+                    </div>
+                  )
+                })}
+                {ALL_BUSINESSES.every((b) => (data?.expenseByCategoryPerBusiness?.[b.id] ?? []).length === 0) && (
+                  <p className="text-sm text-muted-foreground text-center py-10">Gider kaydı yok</p>
+                )}
+              </div>
             )}
           </CardContent>
         </Card>

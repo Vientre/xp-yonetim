@@ -118,6 +118,43 @@ export async function GET(req: NextRequest) {
     expenseByCategory[catId].total += parseFloat(row[5]) || 0
   }
 
+  // ─── Expense by category per business ───────────────────────────────────────
+  // Giderler tablosundaki kayıtları işletmeye göre grupla
+  // Giderler columns: id | gelirKayitId | categoryId | categoryName | description | amount | ...
+  // GunlukGelir columns: id(0) | tarih(1) | isletme(2) | ...
+  const gelirIdToBiz: Record<string, string> = {}
+  for (const row of filtered) {
+    gelirIdToBiz[row[0]] = row[2]
+  }
+
+  const expenseByCategoryPerBusiness: Record<string, Record<string, { name: string; color: string; total: number }>> = {}
+  for (const bizId of BUSINESSES.map((b) => b.id)) {
+    expenseByCategoryPerBusiness[bizId] = {}
+  }
+
+  for (const row of filteredGider) {
+    const bizId = gelirIdToBiz[row[1]]
+    if (!bizId) continue
+    const catId = row[2]
+    const cat = getCategoryById(catId)
+    if (!expenseByCategoryPerBusiness[bizId]) expenseByCategoryPerBusiness[bizId] = {}
+    if (!expenseByCategoryPerBusiness[bizId][catId]) {
+      expenseByCategoryPerBusiness[bizId][catId] = {
+        name: cat?.name ?? row[3] ?? catId,
+        color: cat?.color ?? "#6366f1",
+        total: 0,
+      }
+    }
+    expenseByCategoryPerBusiness[bizId][catId].total += parseFloat(row[5]) || 0
+  }
+
+  const expenseByCategoryPerBusinessArray = Object.fromEntries(
+    Object.entries(expenseByCategoryPerBusiness).map(([bizId, cats]) => [
+      bizId,
+      Object.values(cats).sort((a, b) => b.total - a.total),
+    ])
+  )
+
   // ─── Daily trend ──────────────────────────────────────────────────────────────
   const dailyTrend: Record<string, { date: string; income: number; expense: number }> = {}
   for (const row of filtered) {
@@ -193,6 +230,7 @@ export async function GET(req: NextRequest) {
     comparison,
     businessSummary: Object.values(businessSummary),
     expenseByCategory: Object.values(expenseByCategory).sort((a, b) => b.total - a.total),
+    expenseByCategoryPerBusiness: expenseByCategoryPerBusinessArray,
     dailyTrend: Object.values(dailyTrend).sort((a, b) => a.date.localeCompare(b.date)),
     monthlyTrend: Object.values(monthlyTrend).sort((a, b) => a.month.localeCompare(b.month)).slice(-12),
     mealSummary: { totalQuantity: mealQuantity, totalPrice: mealTotal, orderCount: filteredYemek.length },
