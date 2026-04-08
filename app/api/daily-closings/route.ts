@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getAuthUser, hasBusinessAccess, getAccessibleBusinessIds } from "@/lib/auth-utils"
 import { getRows, appendRow, generateId } from "@/lib/sheets"
 import { TABS, EXPENSE_CATEGORIES, BUSINESSES, getCategoryById, getBusinessName } from "@/lib/constants"
+import { sendTelegramMessage, tl, trDate } from "@/lib/telegram"
 import { z } from "zod"
 
 const expenseRow = z.object({
@@ -179,12 +180,45 @@ export async function POST(req: NextRequest) {
     ])
   }
 
+  // ─── Telegram notification (fire-and-forget) ─────────────────────────────
+  const bizName = getBusinessName(businessId)
+  const expenseLines = expenses.length > 0
+    ? expenses.map((e) => {
+        const cat = getCategoryById(e.categoryId)
+        return `  • ${cat?.name ?? e.categoryId}: ${tl(parseFloat(e.amount) || 0)}`
+      }).join("\n")
+    : "  —"
+
+  const netSign = net >= 0 ? "📈" : "📉"
+  const netFormatted = tl(net)
+
+  const message = [
+    `📋 <b>Yeni Günlük Kayıt</b>`,
+    ``,
+    `🏢 <b>${bizName}</b> — ${trDate(date)}`,
+    `👤 ${user.name}`,
+    ``,
+    `💚 Gelir: <b>${tl(totalIncome)}</b>`,
+    `  💵 Nakit: ${tl(cash)}`,
+    `  💳 Kart: ${tl(card)}`,
+    `  🎟 Bilet: ${tl(ticket)}`,
+    ``,
+    `💸 Gider: <b>${tl(totalExpense)}</b>`,
+    expenseLines,
+    ``,
+    `${netSign} Net: <b>${netFormatted}</b>`,
+    notes ? `\n📝 ${notes}` : "",
+  ].join("\n").trimEnd()
+
+  // Don't await — let it send in the background
+  sendTelegramMessage(message).catch(() => {})
+
   return NextResponse.json(
     {
       id,
       date,
       businessId,
-      business: { id: businessId, name: getBusinessName(businessId) },
+      business: { id: businessId, name: bizName },
       cashIncome: cash,
       cardIncome: card,
       ticketIncome: ticket,
