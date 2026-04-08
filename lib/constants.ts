@@ -23,6 +23,7 @@ export const EXPENSE_CATEGORIES = [
   { id: "bakim", name: "Bakım/Onarım", color: "#84cc16" },
   { id: "pazarlama", name: "Pazarlama", color: "#ec4899" },
   { id: "vergi-sgk", name: "Vergi/SGK", color: "#6b7280" },
+  { id: "yemek", name: "Yemek", color: "#f97316" },
   { id: "diger", name: "Diğer", color: "#94a3b8" },
 ] as const
 
