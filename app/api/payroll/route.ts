@@ -4,8 +4,8 @@
  * Returns per-employee summary for the given month from Puantaj tab.
  *
  * Puantaj columns:
- * id | tarih | personelAdi | isletme | saat | yemek | tip | kesinti | notlar | girenKisiId | girenKisiAdi | olusturmaTarihi
- * 0  |   1   |      2     |    3    |   4  |   5   |  6  |    7    |    8   |      9      |      10      |       11
+ * id | tarih | personelAdi | isletme | saat | yemek | tip | kesinti | notlar | girenKisiId | girenKisiAdi | olusturmaTarihi | mesai
+ * 0  |   1   |      2     |    3    |   4  |   5   |  6  |    7    |    8   |      9      |      10      |       11        |  12
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -47,13 +47,14 @@ export async function GET(req: NextRequest) {
     totalMeal: number
     totalTip: number
     totalDeduction: number
-    records: Array<{ date: string; business: string; hours: number; meal: number; tip: number; deduction: number; notes: string }>
+    totalMesai: number
+    records: Array<{ date: string; business: string; hours: number; meal: number; tip: number; deduction: number; mesai: number; notes: string }>
   }> = {}
 
   for (const row of filtered) {
     const name = row[2] ?? "?"
     if (!map[name]) {
-      map[name] = { name, businesses: new Set(), days: 0, totalHours: 0, totalMeal: 0, totalTip: 0, totalDeduction: 0, records: [] }
+      map[name] = { name, businesses: new Set(), days: 0, totalHours: 0, totalMeal: 0, totalTip: 0, totalDeduction: 0, totalMesai: 0, records: [] }
     }
     map[name].days += 1
     map[name].businesses.add(row[3] ?? "")
@@ -61,6 +62,7 @@ export async function GET(req: NextRequest) {
     map[name].totalMeal += parseFloat(row[5] || "0")
     map[name].totalTip += parseFloat(row[6] || "0")
     map[name].totalDeduction += parseFloat(row[7] || "0")
+    map[name].totalMesai += parseFloat(row[12] || "0")
     map[name].records.push({
       date: row[1],
       business: getBusinessName(row[3] ?? ""),
@@ -68,19 +70,23 @@ export async function GET(req: NextRequest) {
       meal: parseFloat(row[5] || "0"),
       tip: parseFloat(row[6] || "0"),
       deduction: parseFloat(row[7] || "0"),
+      mesai: parseFloat(row[12] || "0"),
       notes: row[8] ?? "",
     })
   }
 
   const employees = Object.values(map).map((e) => {
     const basePay = Math.round(e.totalHours * saatlikUcret * 100) / 100
-    const netPay = Math.round((basePay + e.totalTip - e.totalDeduction) * 100) / 100
+    const mesaiOdeme = Math.round(e.totalMesai * saatlikUcret * 2 * 100) / 100
+    const netPay = Math.round((basePay + mesaiOdeme + e.totalTip - e.totalDeduction) * 100) / 100
     return {
       name: e.name,
       businesses: Array.from(e.businesses).filter(Boolean).map(getBusinessName),
       days: e.days,
       totalHours: Math.round(e.totalHours * 10) / 10,
       basePay,
+      totalMesai: Math.round(e.totalMesai * 10) / 10,
+      mesaiOdeme,
       totalMeal: Math.round(e.totalMeal * 100) / 100,
       totalTip: Math.round(e.totalTip * 100) / 100,
       totalDeduction: Math.round(e.totalDeduction * 100) / 100,
@@ -93,6 +99,8 @@ export async function GET(req: NextRequest) {
     days: employees.reduce((s, e) => s + e.days, 0),
     totalHours: Math.round(employees.reduce((s, e) => s + e.totalHours, 0) * 10) / 10,
     basePay: Math.round(employees.reduce((s, e) => s + e.basePay, 0) * 100) / 100,
+    totalMesai: Math.round(employees.reduce((s, e) => s + e.totalMesai, 0) * 10) / 10,
+    mesaiOdeme: Math.round(employees.reduce((s, e) => s + e.mesaiOdeme, 0) * 100) / 100,
     totalMeal: Math.round(employees.reduce((s, e) => s + e.totalMeal, 0) * 100) / 100,
     totalTip: Math.round(employees.reduce((s, e) => s + e.totalTip, 0) * 100) / 100,
     totalDeduction: Math.round(employees.reduce((s, e) => s + e.totalDeduction, 0) * 100) / 100,

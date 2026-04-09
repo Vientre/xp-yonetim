@@ -29,16 +29,18 @@ interface Employee {
   days: number
   totalHours: number
   basePay: number
+  totalMesai: number
+  mesaiOdeme: number
   totalMeal: number
   totalTip: number
   totalDeduction: number
   netPay: number
-  records: Array<{ date: string; business: string; hours: number; meal: number; tip: number; deduction: number; notes: string }>
+  records: Array<{ date: string; business: string; hours: number; meal: number; tip: number; deduction: number; mesai: number; notes: string }>
 }
 
 interface PayrollData {
   employees: Employee[]
-  totals: { days: number; totalHours: number; basePay: number; totalMeal: number; totalTip: number; totalDeduction: number; netPay: number }
+  totals: { days: number; totalHours: number; basePay: number; totalMesai: number; mesaiOdeme: number; totalMeal: number; totalTip: number; totalDeduction: number; netPay: number }
   saatlikUcret: number
   month: string
 }
@@ -214,6 +216,7 @@ export default function PayrollPage() {
                     <th className="text-center px-3 py-3 font-medium text-muted-foreground">Gün</th>
                     <th className="text-center px-3 py-3 font-medium text-muted-foreground">Saat</th>
                     <th className="text-right px-3 py-3 font-medium text-muted-foreground">Taban</th>
+                    <th className="text-right px-3 py-3 font-medium text-muted-foreground hidden sm:table-cell">Mesai</th>
                     <th className="text-right px-3 py-3 font-medium text-muted-foreground hidden sm:table-cell">Yemek</th>
                     <th className="text-right px-3 py-3 font-medium text-muted-foreground hidden sm:table-cell">Tip</th>
                     <th className="text-right px-3 py-3 font-medium text-muted-foreground hidden sm:table-cell">Kesinti</th>
@@ -244,6 +247,9 @@ export default function PayrollPage() {
                         <td className="px-3 py-3 text-center text-sm">{emp.days}</td>
                         <td className="px-3 py-3 text-center font-medium text-purple-700">{emp.totalHours}</td>
                         <td className="px-3 py-3 text-right">{formatCurrency(emp.basePay)}</td>
+                        <td className="px-3 py-3 text-right text-orange-500 hidden sm:table-cell">
+                          {emp.totalMesai > 0 ? <span title={`${emp.totalMesai}s × 2x`}>{formatCurrency(emp.mesaiOdeme)}</span> : "—"}
+                        </td>
                         <td className="px-3 py-3 text-right text-orange-600 hidden sm:table-cell">{formatCurrency(emp.totalMeal)}</td>
                         <td className="px-3 py-3 text-right text-amber-600 hidden sm:table-cell">{formatCurrency(emp.totalTip)}</td>
                         <td className="px-3 py-3 text-right text-red-500 hidden sm:table-cell">
@@ -256,7 +262,7 @@ export default function PayrollPage() {
                       {/* Expanded daily records */}
                       {expanded.has(emp.name) && (
                         <tr key={`${emp.name}-detail`} className="print:hidden">
-                          <td colSpan={10} className="bg-slate-50 px-6 pb-4 pt-2">
+                          <td colSpan={11} className="bg-slate-50 px-6 pb-4 pt-2">
                             <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Günlük Kayıtlar</p>
                             <table className="w-full text-xs border rounded overflow-hidden">
                               <thead>
@@ -264,6 +270,7 @@ export default function PayrollPage() {
                                   <th className="text-left px-3 py-1.5 font-medium text-muted-foreground">Tarih</th>
                                   <th className="text-left px-3 py-1.5 font-medium text-muted-foreground">İşletme</th>
                                   <th className="text-center px-3 py-1.5 font-medium text-muted-foreground">Saat</th>
+                                  <th className="text-center px-3 py-1.5 font-medium text-muted-foreground">Mesai</th>
                                   <th className="text-right px-3 py-1.5 font-medium text-muted-foreground">Yemek</th>
                                   <th className="text-right px-3 py-1.5 font-medium text-muted-foreground">Tip</th>
                                   <th className="text-right px-3 py-1.5 font-medium text-muted-foreground">Kesinti</th>
@@ -280,6 +287,7 @@ export default function PayrollPage() {
                                       </td>
                                       <td className="px-3 py-1.5 text-muted-foreground">{rec.business}</td>
                                       <td className="px-3 py-1.5 text-center font-medium text-purple-700">{rec.hours}</td>
+                                      <td className="px-3 py-1.5 text-center text-orange-500">{rec.mesai > 0 ? `${rec.mesai}s` : "—"}</td>
                                       <td className="px-3 py-1.5 text-right">{rec.meal > 0 ? formatCurrency(rec.meal) : "—"}</td>
                                       <td className="px-3 py-1.5 text-right">{rec.tip > 0 ? formatCurrency(rec.tip) : "—"}</td>
                                       <td className="px-3 py-1.5 text-right text-red-500">{rec.deduction > 0 ? `−${formatCurrency(rec.deduction)}` : "—"}</td>
@@ -291,6 +299,7 @@ export default function PayrollPage() {
                             </table>
                             <p className="text-xs text-muted-foreground mt-2">
                               Taban: {emp.totalHours} saat × {formatCurrency(data?.saatlikUcret ?? 0)} = {formatCurrency(emp.basePay)}
+                              {emp.totalMesai > 0 && ` + Mesai: ${emp.totalMesai}s × 2 × ${formatCurrency(data?.saatlikUcret ?? 0)} = ${formatCurrency(emp.mesaiOdeme)}`}
                               {emp.totalTip > 0 && ` + Tip ${formatCurrency(emp.totalTip)}`}
                               {emp.totalDeduction > 0 && ` − Kesinti ${formatCurrency(emp.totalDeduction)}`}
                               {" = "}<strong>Net {formatCurrency(emp.netPay)}</strong>
@@ -310,6 +319,9 @@ export default function PayrollPage() {
                       <td className="px-3 py-3 text-center">{totals.days}</td>
                       <td className="px-3 py-3 text-center text-purple-700">{totals.totalHours}</td>
                       <td className="px-3 py-3 text-right">{formatCurrency(totals.basePay)}</td>
+                      <td className="px-3 py-3 text-right text-orange-500 hidden sm:table-cell">
+                        {totals.mesaiOdeme > 0 ? formatCurrency(totals.mesaiOdeme) : "—"}
+                      </td>
                       <td className="px-3 py-3 text-right text-orange-600 hidden sm:table-cell">{formatCurrency(totals.totalMeal)}</td>
                       <td className="px-3 py-3 text-right text-amber-600 hidden sm:table-cell">{formatCurrency(totals.totalTip)}</td>
                       <td className="px-3 py-3 text-right text-red-500 hidden sm:table-cell">
@@ -329,7 +341,7 @@ export default function PayrollPage() {
 
       {/* Print footer */}
       <div className="hidden print:block mt-8 text-xs text-gray-500 border-t pt-4">
-        <p>Saatlik ücret: {formatCurrency(data?.saatlikUcret ?? 0)} | Net = (Saat × Saatlik Ücret) + Tip − Kesinti</p>
+        <p>Saatlik ücret: {formatCurrency(data?.saatlikUcret ?? 0)} | Net = (Saat × Saatlik Ücret) + (Mesai × 2 × Saatlik Ücret) + Tip − Kesinti</p>
         <p className="mt-1">Bu belge otomatik olarak oluşturulmuştur.</p>
       </div>
     </div>

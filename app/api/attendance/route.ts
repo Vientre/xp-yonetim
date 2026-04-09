@@ -2,8 +2,8 @@
  * Attendance (Puantaj) API
  *
  * Google Sheet: "Puantaj" tab
- * Columns: id | tarih | personelAdi | isletme | saat | yemek | tip | kesinti | notlar | girenKisiId | girenKisiAdi | olusturmaTarihi
- * Index:   0  |   1   |      2     |    3    |   4  |   5   |  6  |    7    |    8   |      9      |      10      |       11
+ * Columns: id | tarih | personelAdi | isletme | saat | yemek | tip | kesinti | notlar | girenKisiId | girenKisiAdi | olusturmaTarihi | mesai
+ * Index:   0  |   1   |      2     |    3    |   4  |   5   |  6  |    7    |    8   |      9      |      10      |       11        |  12
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -20,6 +20,7 @@ const attendanceSchema = z.object({
   mealAmount: z.number().min(0).default(0),
   tipAmount: z.number().min(0).default(0),
   deductionAmount: z.number().min(0).default(0),
+  mesai: z.number().min(0).default(0),
   notes: z.string().optional(),
 })
 
@@ -50,6 +51,7 @@ export async function GET(req: NextRequest) {
     enteredById: row[9] ?? "",
     enteredBy: { name: row[10] ?? "" },
     createdAt: row[11] ?? "",
+    mesai: parseFloat(row[12] || "0"),
   }))
 
   entries = entries.filter((e) => accessibleIds.includes(e.businessId))
@@ -71,7 +73,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
 
-  const { businessId, date, employeeName, hoursWorked, mealAmount, tipAmount, deductionAmount, notes } = parsed.data
+  const { businessId, date, employeeName, hoursWorked, mealAmount, tipAmount, deductionAmount, mesai, notes } = parsed.data
 
   if (!hasBusinessAccess(user, businessId)) {
     return NextResponse.json({ error: "Bu işletmeye erişim yok" }, { status: 403 })
@@ -83,14 +85,14 @@ export async function POST(req: NextRequest) {
   await appendRow(TABS.ATTENDANCE, [
     id, date, employeeName, businessId,
     hoursWorked, mealAmount, tipAmount, deductionAmount,
-    notes ?? "", user.id, user.name, createdAt,
+    notes ?? "", user.id, user.name, createdAt, mesai,
   ])
 
   return NextResponse.json(
     {
       id, date, employeeName, businessId,
       business: { id: businessId, name: getBusinessName(businessId) },
-      hoursWorked, mealAmount, tipAmount, deductionAmount,
+      hoursWorked, mealAmount, tipAmount, deductionAmount, mesai,
       notes: notes ?? "",
       enteredBy: { name: user.name }, createdAt,
     },

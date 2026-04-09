@@ -3,7 +3,25 @@
     "allow": [
       "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --no-src-dir --import-alias \"@/*\" --yes)",
       "Bash(npm --version)",
-      "Bash(export PATH=\"$PATH:/usr/local/bin:/opt/homebrew/bin\")"
+      "Bash(export PATH=\"$PATH:/usr/local/bin:/opt/homebrew/bin\")",
+      "Bash(export PATH=\"$PATH:/usr/local/bin\")",
+      "Bash(npm install:*)",
+      "Bash(npx prisma:*)",
+      "Bash(ls /Users/buraksahingil/Desktop/claudemuhasebe/*.config*)",
+      "Bash(ls /Users/buraksahingil/Desktop/claudemuhasebe/*.json)",
+      "Bash(npx tsc:*)",
+      "Bash(npx next:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(command -v npm)",
+      "Read(//usr/local/bin/**)",
+      "Bash(kill 39304)",
+      "Read(//Users/buraksahingil/Desktop/**)",
+      "Bash(npx create-next-app@latest poster-generator --typescript --tailwind --eslint --app --src-dir=false --import-alias=\"@/*\" --no-git --yes)",
+      "Bash(export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\")",
+      "Bash(kill 66270)",
+      "Bash(pkill -f \"poster-generator.*next\")",
+      "Bash(export PATH=\"/usr/local/bin:$PATH\")",
+      "Bash(/Users/buraksahingil/Desktop/poster-generator/node_modules/.bin/next dev:*)"
     ]
   }
 }

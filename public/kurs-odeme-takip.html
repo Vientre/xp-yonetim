@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kurs Ödeme Takip</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      color: #1a1a1a;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 16px 20px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #111;
+    }
+
+    header p {
+      font-size: 12px;
+      color: #6b7280;
+      margin-top: 2px;
+    }
+
+    .container { padding: 16px 20px; max-width: 1100px; margin: 0 auto; }
+
+    /* Summary Cards */
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 14px 16px;
+      border: 1px solid #e5e7eb;
+    }
+
+    .card .label {
+      font-size: 11px;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+
+    .card .value {
+      font-size: 22px;
+      font-weight: 700;
+      margin-top: 4px;
+      color: #111;
+    }
+
+    .card.green .value { color: #16a34a; }
+    .card.red .value { color: #dc2626; }
+
+    /* Add Student Form */
+    .add-form {
+      background: #fff;
+      border-radius: 10px;
+      padding: 16px;
+      border: 1px solid #e5e7eb;
+      margin-bottom: 20px;
+    }
+
+    .add-form h2 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: #374151;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .form-row input {
+      flex: 1;
+      min-width: 160px;
+      padding: 9px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .form-row input:focus { border-color: #3b82f6; }
+
+    .form-row button {
+      padding: 9px 20px;
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+
+    .form-row button:hover { background: #2563eb; }
+
+    /* Search */
+    .search-bar {
+      margin-bottom: 14px;
+    }
+
+    .search-bar input {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      background: #fff;
+      outline: none;
+    }
+
+    .search-bar input:focus { border-color: #3b82f6; }
+
+    /* Table wrapper */
+    .table-wrap {
+      background: #fff;
+      border-radius: 10px;
+      border: 1px solid #e5e7eb;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 620px;
+    }
+
+    thead th {
+      background: #f9fafb;
+      padding: 10px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #6b7280;
+      text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+      white-space: nowrap;
+    }
+
+    tbody tr:not(:last-child) td {
+      border-bottom: 1px solid #f3f4f6;
+    }
+
+    tbody tr:hover { background: #fafafa; }
+
+    tbody td {
+      padding: 10px 14px;
+      font-size: 14px;
+      vertical-align: middle;
+    }
+
+    td.name { font-weight: 500; }
+
+    td.fee {
+      color: #374151;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    /* Payment cell */
+    .pay-cell {
+      cursor: pointer;
+      border-radius: 6px;
+      padding: 6px 10px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      user-select: none;
+      transition: opacity 0.15s;
+      white-space: nowrap;
+    }
+
+    .pay-cell:hover { opacity: 0.8; }
+
+    .pay-cell.paid {
+      background: #dcfce7;
+      color: #15803d;
+    }
+
+    .pay-cell.unpaid {
+      background: #fee2e2;
+      color: #b91c1c;
+    }
+
+    td.total-paid {
+      font-weight: 600;
+      color: #15803d;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    td.total-debt {
+      font-weight: 600;
+      color: #b91c1c;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    td.actions { white-space: nowrap; }
+
+    .btn-delete {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #9ca3af;
+      font-size: 16px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: color 0.15s;
+    }
+
+    .btn-delete:hover { color: #ef4444; }
+
+    .empty {
+      text-align: center;
+      padding: 40px;
+      color: #9ca3af;
+      font-size: 14px;
+    }
+
+    /* Mobile */
+    @media (max-width: 600px) {
+      .summary { grid-template-columns: 1fr 1fr; }
+      .summary .card:last-child { grid-column: span 2; }
+      .card .value { font-size: 18px; }
+      .container { padding: 12px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Kurs Ödeme Takip</h1>
+  <p>Mart · Nisan · Mayıs 2025</p>
+</header>
+
+<div class="container">
+
+  <!-- Summary -->
+  <div class="summary">
+    <div class="card">
+      <div class="label">Toplam Öğrenci</div>
+      <div class="value" id="totalStudents">0</div>
+    </div>
+    <div class="card green">
+      <div class="label">Toplam Tahsilat</div>
+      <div class="value" id="totalCollected">₺0</div>
+    </div>
+    <div class="card red">
+      <div class="label">Eksik Ödeme</div>
+      <div class="value" id="totalMissing">₺0</div>
+    </div>
+  </div>
+
+  <!-- Add Form -->
+  <div class="add-form">
+    <h2>Yeni Öğrenci Ekle</h2>
+    <div class="form-row">
+      <input type="text" id="inputName" placeholder="Ad Soyad" />
+      <input type="number" id="inputFee" placeholder="Aylık Ücret (₺)" min="0" />
+      <button type="button" id="addBtn">Ekle</button>
+    </div>
+    <div id="formError" style="color:#dc2626;font-size:13px;margin-top:8px;display:none;"></div>
+  </div>
+
+  <!-- Search -->
+  <div class="search-bar">
+    <input type="text" id="searchInput" placeholder="Öğrenci ara..." oninput="renderTable()" />
+  </div>
+
+  <!-- Table -->
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Ad Soyad</th>
+          <th>Aylık Ücret</th>
+          <th>Mart</th>
+          <th>Nisan</th>
+          <th>Mayıs</th>
+          <th>Toplam Ödenen</th>
+          <th>Kalan Borç</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+    <div id="emptyMsg" class="empty" style="display:none">Henüz öğrenci eklenmedi.</div>
+  </div>
+
+</div>
+
+<script>
+  const MONTHS = ['mart', 'nisan', 'mayis'];
+  const MONTH_LABELS = { mart: 'Mart', nisan: 'Nisan', mayis: 'Mayıs' };
+
+  function load() {
+    return JSON.parse(localStorage.getItem('kurs_ogrenciler') || '[]');
+  }
+
+  function save(data) {
+    localStorage.setItem('kurs_ogrenciler', JSON.stringify(data));
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('formError');
+    el.textContent = msg;
+    el.style.display = msg ? 'block' : 'none';
+  }
+
+  function addStudent() {
+    const name = document.getElementById('inputName').value.trim();
+    const feeVal = document.getElementById('inputFee').value.trim();
+    const fee = parseFloat(feeVal);
+
+    if (!name) { showError('Lütfen ad soyad girin.'); return; }
+    if (!feeVal || isNaN(fee) || fee <= 0) { showError('Lütfen geçerli bir ücret girin.'); return; }
+    showError('');
+
+    const students = load();
+    students.push({
+      id: Date.now(),
+      name,
+      fee,
+      payments: { mart: false, nisan: false, mayis: false }
+    });
+    save(students);
+
+    document.getElementById('inputName').value = '';
+    document.getElementById('inputFee').value = '';
+    renderTable();
+    updateSummary();
+  }
+
+  function togglePayment(id, month) {
+    const students = load();
+    const s = students.find(s => s.id === id);
+    if (s) {
+      s.payments[month] = !s.payments[month];
+      save(students);
+      renderTable();
+      updateSummary();
+    }
+  }
+
+  function deleteStudent(id) {
+    if (!confirm('Bu öğrenciyi silmek istediğinize emin misiniz?')) return;
+    const students = load().filter(s => s.id !== id);
+    save(students);
+    renderTable();
+    updateSummary();
+  }
+
+  function fmt(n) {
+    return '₺' + n.toLocaleString('tr-TR');
+  }
+
+  function renderTable() {
+    const query = document.getElementById('searchInput').value.toLowerCase();
+    const students = load().filter(s => s.name.toLowerCase().includes(query));
+    const tbody = document.getElementById('tableBody');
+    const emptyMsg = document.getElementById('emptyMsg');
+
+    if (students.length === 0) {
+      tbody.innerHTML = '';
+      emptyMsg.style.display = 'block';
+      return;
+    }
+    emptyMsg.style.display = 'none';
+
+    tbody.innerHTML = students.map((s, i) => {
+      const paidCount = MONTHS.filter(m => s.payments[m]).length;
+      const totalPaid = paidCount * s.fee;
+      const totalDebt = (3 - paidCount) * s.fee;
+
+      const monthCells = MONTHS.map(m => {
+        const paid = s.payments[m];
+        return `<td>
+          <div class="pay-cell ${paid ? 'paid' : 'unpaid'}" onclick="togglePayment(${s.id}, '${m}')">
+            ${paid ? '✓ Ödendi' : '✗ Ödenmedi'}
+          </div>
+        </td>`;
+      }).join('');
+
+      return `<tr>
+        <td style="color:#9ca3af;font-size:12px">${i + 1}</td>
+        <td class="name">${escHtml(s.name)}</td>
+        <td class="fee">${fmt(s.fee)}</td>
+        ${monthCells}
+        <td class="total-paid">${fmt(totalPaid)}</td>
+        <td class="total-debt">${totalDebt > 0 ? fmt(totalDebt) : '—'}</td>
+        <td class="actions">
+          <button class="btn-delete" onclick="deleteStudent(${s.id})" title="Sil">✕</button>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  function updateSummary() {
+    const students = load();
+    let collected = 0, missing = 0;
+
+    students.forEach(s => {
+      MONTHS.forEach(m => {
+        if (s.payments[m]) collected += s.fee;
+        else missing += s.fee;
+      });
+    });
+
+    document.getElementById('totalStudents').textContent = students.length;
+    document.getElementById('totalCollected').textContent = fmt(collected);
+    document.getElementById('totalMissing').textContent = fmt(missing);
+  }
+
+  function escHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // Button click
+  document.getElementById('addBtn').addEventListener('click', addStudent);
+
+  // Enter key support
+  ['inputName','inputFee'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => {
+      if (e.key === 'Enter') addStudent();
+    });
+  });
+
+  // Init
+  renderTable();
+  updateSummary();
+</script>
+
+</body>
+</html>

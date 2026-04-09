@@ -28,6 +28,7 @@ interface AttendanceEntry {
   mealAmount: number
   tipAmount: number
   deductionAmount: number
+  mesai: number
   notes: string
 }
 
@@ -38,6 +39,7 @@ interface EntryRow {
   mealEnabled: boolean; mealAmount: number
   tipEnabled: boolean;  tipAmount: number
   deductionEnabled: boolean; deductionAmount: number
+  mesaiEnabled: boolean; mesai: number
   notes: string
 }
 
@@ -48,6 +50,7 @@ function emptyRow(): EntryRow {
     mealEnabled: false, mealAmount: 0,
     tipEnabled: false,  tipAmount: 0,
     deductionEnabled: false, deductionAmount: 0,
+    mesaiEnabled: false, mesai: 0,
     notes: "",
   }
 }
@@ -162,6 +165,7 @@ export default function AttendancePage() {
             mealAmount: row.mealEnabled ? row.mealAmount : 0,
             tipAmount: row.tipEnabled ? row.tipAmount : 0,
             deductionAmount: row.deductionEnabled ? row.deductionAmount : 0,
+            mesai: row.mesaiEnabled ? row.mesai : 0,
             notes: row.notes,
           }),
         })
@@ -198,6 +202,7 @@ export default function AttendancePage() {
           mealAmount: editEntry.mealAmount,
           tipAmount: editEntry.tipAmount,
           deductionAmount: editEntry.deductionAmount,
+          mesai: editEntry.mesai,
           notes: editEntry.notes,
         }),
       })
@@ -223,13 +228,14 @@ export default function AttendancePage() {
   const thisMonth = format(new Date(), "yyyy-MM")
   const thisMonthEntries = entries.filter((e) => e.date.startsWith(thisMonth))
   const totalHours = thisMonthEntries.reduce((s, e) => s + e.hoursWorked, 0)
-  const empTotals: Record<string, { hours: number; meal: number; tip: number; deduction: number }> = {}
+  const empTotals: Record<string, { hours: number; meal: number; tip: number; deduction: number; mesai: number }> = {}
   for (const e of thisMonthEntries) {
-    if (!empTotals[e.employeeName]) empTotals[e.employeeName] = { hours: 0, meal: 0, tip: 0, deduction: 0 }
+    if (!empTotals[e.employeeName]) empTotals[e.employeeName] = { hours: 0, meal: 0, tip: 0, deduction: 0, mesai: 0 }
     empTotals[e.employeeName].hours += e.hoursWorked
     empTotals[e.employeeName].meal += e.mealAmount
     empTotals[e.employeeName].tip += e.tipAmount
     empTotals[e.employeeName].deduction += e.deductionAmount
+    empTotals[e.employeeName].mesai += e.mesai
   }
 
   if (fetching) return <div className="space-y-4"><Skeleton className="h-8 w-48" /><Skeleton className="h-96 w-full" /></div>
@@ -366,15 +372,16 @@ export default function AttendancePage() {
                       onChange={(e) => setEditEntry({ ...editEntry, hoursWorked: parseFloat(e.target.value) || 0 })}
                       className="text-center font-bold text-lg" />
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     {[
                       { label: "Yemek", key: "mealAmount" as const },
                       { label: "Tip", key: "tipAmount" as const },
                       { label: "Kesinti", key: "deductionAmount" as const },
+                      { label: "Mesai (saat)", key: "mesai" as const },
                     ].map(({ label, key }) => (
                       <div key={key} className="space-y-1">
-                        <Label className="text-xs">{label} (₺)</Label>
-                        <Input type="number" step="0.01" min="0"
+                        <Label className="text-xs">{label}{key !== "mesai" ? " (₺)" : ""}</Label>
+                        <Input type="number" step={key === "mesai" ? "0.5" : "0.01"} min="0"
                           value={editEntry[key]}
                           onChange={(e) => setEditEntry({ ...editEntry, [key]: parseFloat(e.target.value) || 0 })}
                           className="text-right text-xs h-8" />
@@ -498,6 +505,17 @@ export default function AttendancePage() {
                                 className="w-20 h-6 text-xs text-right bg-white" />
                             )}
                           </div>
+                          <div className="flex items-center gap-1.5">
+                            <Switch checked={row.mesaiEnabled} onCheckedChange={(v) => updateRow(i, { mesaiEnabled: v })} />
+                            <Label className="text-xs">Mesai</Label>
+                            {row.mesaiEnabled && (
+                              <Input type="number" step="0.5" min="0"
+                                value={row.mesai}
+                                onChange={(e) => updateRow(i, { mesai: parseFloat(e.target.value) || 0 })}
+                                className="w-16 h-6 text-xs text-right bg-white" />
+                            )}
+                            {row.mesaiEnabled && <span className="text-xs text-slate-500">s</span>}
+                          </div>
                         </div>
 
                         <Input
@@ -541,6 +559,7 @@ export default function AttendancePage() {
                     <tr className="border-b bg-gray-50">
                       <th className="text-left px-4 py-2 font-medium text-muted-foreground text-xs">Personel</th>
                       <th className="text-right px-4 py-2 font-medium text-muted-foreground text-xs">Saat</th>
+                      <th className="text-right px-4 py-2 font-medium text-muted-foreground text-xs">Mesai</th>
                       <th className="text-right px-4 py-2 font-medium text-muted-foreground text-xs">Yemek</th>
                       <th className="text-right px-4 py-2 font-medium text-muted-foreground text-xs">Tip</th>
                       <th className="text-right px-4 py-2 font-medium text-muted-foreground text-xs">Kesinti</th>
@@ -551,6 +570,7 @@ export default function AttendancePage() {
                       <tr key={name} className="border-b last:border-0">
                         <td className="px-4 py-2 font-medium text-xs">{name}</td>
                         <td className="px-4 py-2 text-right font-bold text-blue-600 text-xs">{t.hours}s</td>
+                        <td className="px-4 py-2 text-right text-orange-600 text-xs">{t.mesai > 0 ? `${t.mesai}s` : "-"}</td>
                         <td className="px-4 py-2 text-right text-xs">{t.meal > 0 ? formatCurrency(t.meal) : "-"}</td>
                         <td className="px-4 py-2 text-right text-xs">{t.tip > 0 ? formatCurrency(t.tip) : "-"}</td>
                         <td className="px-4 py-2 text-right text-red-600 text-xs">{t.deduction > 0 ? formatCurrency(t.deduction) : "-"}</td>
@@ -579,6 +599,7 @@ export default function AttendancePage() {
                       <th className="text-left px-4 py-2 font-medium text-muted-foreground text-xs">Personel</th>
                       <th className="text-left px-4 py-2 font-medium text-muted-foreground text-xs">İşletme</th>
                       <th className="text-right px-4 py-2 font-medium text-muted-foreground text-xs">Saat</th>
+                      <th className="text-right px-4 py-2 font-medium text-muted-foreground text-xs">Mesai</th>
                       <th className="text-right px-4 py-2 font-medium text-muted-foreground text-xs">Yemek</th>
                       <th className="text-right px-4 py-2 font-medium text-muted-foreground text-xs">Tip</th>
                       <th className="text-right px-4 py-2 font-medium text-muted-foreground text-xs">Kesinti</th>
@@ -588,7 +609,7 @@ export default function AttendancePage() {
                   </thead>
                   <tbody>
                     {entries.length === 0 ? (
-                      <tr><td colSpan={9} className="text-center py-10 text-muted-foreground">Kayıt yok</td></tr>
+                      <tr><td colSpan={10} className="text-center py-10 text-muted-foreground">Kayıt yok</td></tr>
                     ) : (
                       entries.map((entry) => (
                         <tr key={entry.id} className={`border-b last:border-0 hover:bg-gray-50 transition-colors ${editEntry?.id === entry.id ? "bg-amber-50" : ""}`}>
@@ -596,6 +617,7 @@ export default function AttendancePage() {
                           <td className="px-4 py-2.5 font-medium text-xs">{entry.employeeName}</td>
                           <td className="px-4 py-2.5 text-xs text-muted-foreground">{entry.business.name}</td>
                           <td className="px-4 py-2.5 text-right font-bold text-blue-600 text-xs">{entry.hoursWorked}s</td>
+                          <td className="px-4 py-2.5 text-right text-orange-600 text-xs">{entry.mesai > 0 ? `${entry.mesai}s` : "-"}</td>
                           <td className="px-4 py-2.5 text-right text-xs">{entry.mealAmount > 0 ? formatCurrency(entry.mealAmount) : "-"}</td>
                           <td className="px-4 py-2.5 text-right text-xs">{entry.tipAmount > 0 ? formatCurrency(entry.tipAmount) : "-"}</td>
                           <td className="px-4 py-2.5 text-right text-red-600 text-xs">{entry.deductionAmount > 0 ? formatCurrency(entry.deductionAmount) : "-"}</td>
