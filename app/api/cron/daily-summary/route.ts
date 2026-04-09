@@ -23,16 +23,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  // "Today" in Turkey time — at 23:30 UTC this is the current UTC date,
-  // which matches the business day that just ended in Turkey.
-  const now = new Date()
-  const todayUTC = now.toISOString().split("T")[0]
+  // Cron fires at 23:30 UTC = 02:30 Turkey (UTC+3, next calendar day).
+  // We want the previous business day in Istanbul time → shift to Istanbul
+  // then subtract 1 day.
+  const nowIstanbul = new Date(Date.now() + 3 * 60 * 60 * 1000)
+  const yesterdayIstanbul = new Date(nowIstanbul.getTime() - 24 * 60 * 60 * 1000)
+  const summaryDate = yesterdayIstanbul.toISOString().split("T")[0]
 
   // Fetch income rows
   const gelirRows = await getRows(TABS.DAILY_INCOME)
 
-  // Filter to today only
-  const todayRows = gelirRows.filter((r) => r[1] === todayUTC)
+  // Filter to summary date only
+  const todayRows = gelirRows.filter((r) => r[1] === summaryDate)
 
   // Group by business
   const byBusiness: Record<string, { income: number; expense: number; net: number }> = {}
@@ -71,7 +73,7 @@ export async function GET(req: NextRequest) {
   const missingCount = BUSINESSES.length - recordedCount
 
   const message = [
-    `🌙 <b>Günlük Özet — ${trDate(todayUTC)}</b>`,
+    `🌙 <b>Günlük Özet — ${trDate(summaryDate)}</b>`,
     ``,
     ...businessLines.map((l, i) => (i < businessLines.length - 1 ? l + "\n" : l)),
     ``,
@@ -89,7 +91,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    date: todayUTC,
+    date: summaryDate,
     businesses: recordedCount,
     totalIncome,
     totalExpense,
