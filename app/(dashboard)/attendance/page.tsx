@@ -71,7 +71,7 @@ export default function AttendancePage() {
   // Employee management panel
   const [showEmpPanel, setShowEmpPanel] = useState(false)
   const [newEmpName, setNewEmpName] = useState("")
-  const [newEmpBizId, setNewEmpBizId] = useState(BUSINESSES[0].id)
+  const [newEmpBizId, setNewEmpBizId] = useState<string>(BUSINESSES[0].id)
   const [addingEmp, setAddingEmp] = useState(false)
   const [deletingEmp, setDeletingEmp] = useState<string | null>(null)
 
