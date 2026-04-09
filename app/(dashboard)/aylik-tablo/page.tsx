@@ -60,7 +60,7 @@ export default function AylikTabloPage() {
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth())
-  const [businessId, setBusinessId] = useState(BUSINESSES[0].id)
+  const [businessId, setBusinessId] = useState<string>(BUSINESSES[0].id)
   const [entries, setEntries] = useState<DayEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
