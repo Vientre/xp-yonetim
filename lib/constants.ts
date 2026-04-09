@@ -55,4 +55,6 @@ export const TABS = {
   MEALS: "Yemek",
   ATTENDANCE: "Puantaj",
   SETTINGS: "Ayarlar",
+  KURS_OGRENCI: "KursOgrenci",
+  KURS_ODEME: "KursOdeme",
 } as const

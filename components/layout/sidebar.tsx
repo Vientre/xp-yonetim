@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Receipt,
   Table2,
+  GraduationCap,
 } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -64,6 +65,12 @@ const navItems: NavItem[] = [
     title: "Maaş Bordrosu",
     href: "/payroll",
     icon: Receipt,
+    roles: ["admin"],
+  },
+  {
+    title: "Kurs Ödemeleri",
+    href: "/kurs",
+    icon: GraduationCap,
     roles: ["admin"],
   },
   {
