@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { Plus, Trash2, Search, Printer, GraduationCap, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,12 +9,15 @@ import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+type Payment = { paid: boolean; date: string }
+
 type Student = {
   id: string
   name: string
   monthlyFee: number
   createdAt: string
-  payments: Record<string, boolean> // { "2025-03": true, ... }
+  sinif: string
+  payments: Record<string, Payment>
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -28,8 +31,17 @@ function formatTL(n: number) {
   return "₺" + new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 }
 
-/** Returns [year, month0based] for N months starting from given month */
-function getMonthRange(startYear: number, startMonth: number, count: number): Array<{ year: number; month: number; key: string; label: string }> {
+function formatDate(iso: string) {
+  if (!iso) return ""
+  const [y, m, d] = iso.split("-")
+  return `${d}.${m}.${y}`
+}
+
+function todayISO() {
+  return new Date().toISOString().split("T")[0]
+}
+
+function getMonthRange(startYear: number, startMonth: number, count: number) {
   const result = []
   for (let i = 0; i < count; i++) {
     let m = startMonth + i
@@ -45,16 +57,21 @@ function getMonthRange(startYear: number, startMonth: number, count: number): Ar
 
 export default function KursPage() {
   const now = new Date()
-  // Start from 2 months ago, show 3 months
-  const [rangeStart, setRangeStart] = useState({ year: now.getFullYear(), month: Math.max(0, now.getMonth() - 2) })
+  const [rangeStart, setRangeStart] = useState({
+    year: now.getFullYear(),
+    month: Math.max(0, now.getMonth() - 2),
+  })
 
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
+  const [selectedSinif, setSelectedSinif] = useState("")
+
   const [newName, setNewName] = useState("")
   const [newFee, setNewFee] = useState("")
+  const [newSinif, setNewSinif] = useState("")
   const [adding, setAdding] = useState(false)
-  const [toggling, setToggling] = useState<string | null>(null) // "studentId-month"
+  const [toggling, setToggling] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
 
   const months = getMonthRange(rangeStart.year, rangeStart.month, 3)
@@ -76,25 +93,29 @@ export default function KursPage() {
 
   function prevPeriod() {
     setRangeStart(({ year, month }) => {
-      let m = month - 3
-      let y = year
+      let m = month - 3; let y = year
       if (m < 0) { m += 12; y-- }
       return { year: y, month: m }
     })
   }
   function nextPeriod() {
     setRangeStart(({ year, month }) => {
-      let m = month + 3
-      let y = year
+      let m = month + 3; let y = year
       if (m > 11) { m -= 12; y++ }
       return { year: y, month: m }
     })
   }
 
+  const sinifList = useMemo(() => {
+    const set = new Set(students.map((s) => s.sinif).filter(Boolean))
+    return Array.from(set).sort()
+  }, [students])
+
   async function addStudent(e: React.FormEvent) {
     e.preventDefault()
     const name = newName.trim()
     const fee = parseFloat(newFee)
+    const sinif = newSinif.trim()
     if (!name) { toast.error("Ad soyad girin"); return }
     if (!fee || fee <= 0) { toast.error("Geçerli bir ücret girin"); return }
     setAdding(true)
@@ -102,13 +123,12 @@ export default function KursPage() {
       const res = await fetch("/api/kurs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "add", name, monthlyFee: fee }),
+        body: JSON.stringify({ action: "add", name, monthlyFee: fee, sinif }),
       })
       if (!res.ok) throw new Error()
       const student: Student = await res.json()
       setStudents((prev) => [...prev, student])
-      setNewName("")
-      setNewFee("")
+      setNewName(""); setNewFee(""); setNewSinif("")
       toast.success(`${name} eklendi`)
     } catch {
       toast.error("Eklenemedi")
@@ -117,24 +137,33 @@ export default function KursPage() {
     }
   }
 
-  async function togglePayment(studentId: string, month: string, currentPaid: boolean) {
+  async function togglePayment(studentId: string, month: string, current: Payment | undefined) {
+    const currentPaid = current?.paid ?? false
+    const newPaid = !currentPaid
+    const newDate = newPaid ? todayISO() : ""
     const key = `${studentId}-${month}`
     setToggling(key)
-    // Optimistic update
+
+    // Optimistic
     setStudents((prev) => prev.map((s) =>
-      s.id === studentId ? { ...s, payments: { ...s.payments, [month]: !currentPaid } } : s
+      s.id === studentId
+        ? { ...s, payments: { ...s.payments, [month]: { paid: newPaid, date: newDate } } }
+        : s
     ))
+
     try {
       const res = await fetch("/api/kurs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "toggle", studentId, month, paid: !currentPaid }),
+        body: JSON.stringify({ action: "toggle", studentId, month, paid: newPaid, date: newDate }),
       })
       if (!res.ok) throw new Error()
     } catch {
       // Revert
       setStudents((prev) => prev.map((s) =>
-        s.id === studentId ? { ...s, payments: { ...s.payments, [month]: currentPaid } } : s
+        s.id === studentId
+          ? { ...s, payments: { ...s.payments, [month]: current ?? { paid: false, date: "" } } }
+          : s
       ))
       toast.error("Kaydedilemedi")
     } finally {
@@ -157,16 +186,16 @@ export default function KursPage() {
     }
   }
 
-  const filtered = students.filter((s) =>
-    s.name.toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = students.filter((s) => {
+    const matchSinif = !selectedSinif || s.sinif === selectedSinif
+    const matchSearch = s.name.toLowerCase().includes(search.toLowerCase())
+    return matchSinif && matchSearch
+  })
 
-  // Summary calculations
-  let totalCollected = 0
-  let totalMissing = 0
-  for (const s of students) {
+  let totalCollected = 0, totalMissing = 0
+  for (const s of filtered) {
     for (const mo of months) {
-      if (s.payments[mo.key]) totalCollected += s.monthlyFee
+      if (s.payments[mo.key]?.paid) totalCollected += s.monthlyFee
       else totalMissing += s.monthlyFee
     }
   }
@@ -194,8 +223,11 @@ export default function KursPage() {
       {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Toplam Öğrenci</p>
-          <p className="text-3xl font-bold text-slate-900 mt-1">{students.length}</p>
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+            {selectedSinif ? `${selectedSinif} Öğrencisi` : "Toplam Öğrenci"}
+          </p>
+          <p className="text-3xl font-bold text-slate-900 mt-1">{filtered.length}</p>
+          {selectedSinif && <p className="text-xs text-slate-400 mt-0.5">Toplam: {students.length}</p>}
         </div>
         <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 shadow-sm">
           <p className="text-xs font-medium text-emerald-700 uppercase tracking-wide">Toplam Tahsilat</p>
@@ -218,6 +250,12 @@ export default function KursPage() {
             className="flex-1 min-w-[180px]"
           />
           <Input
+            placeholder="Sınıf (örn: 1A, 2B)"
+            value={newSinif}
+            onChange={(e) => setNewSinif(e.target.value)}
+            className="w-36"
+          />
+          <Input
             type="number"
             placeholder="Aylık Ücret (₺)"
             value={newFee}
@@ -232,9 +270,34 @@ export default function KursPage() {
         </form>
       </div>
 
-      {/* Period navigator + Search */}
+      {/* Filters */}
       <div className="flex flex-wrap items-center gap-3 print:hidden">
-        {/* Period navigator */}
+        {sinifList.length > 0 && (
+          <div className="flex gap-1 bg-slate-100 p-1 rounded-lg flex-wrap">
+            <button
+              onClick={() => setSelectedSinif("")}
+              className={cn(
+                "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                selectedSinif === "" ? "bg-white shadow text-slate-900" : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              Tümü
+            </button>
+            {sinifList.map((sinif) => (
+              <button
+                key={sinif}
+                onClick={() => setSelectedSinif(sinif)}
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                  selectedSinif === sinif ? "bg-white shadow text-slate-900" : "text-slate-500 hover:text-slate-700"
+                )}
+              >
+                {sinif}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-sm">
           <button onClick={prevPeriod} className="p-1 rounded hover:bg-slate-100 transition-colors">
             <ChevronLeft className="w-4 h-4 text-slate-600" />
@@ -247,8 +310,7 @@ export default function KursPage() {
           </button>
         </div>
 
-        {/* Search */}
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <Input
             placeholder="Öğrenci ara..."
@@ -270,9 +332,10 @@ export default function KursPage() {
                 <tr className="bg-slate-50 border-b border-slate-200">
                   <th className="text-left px-4 py-3 text-slate-500 font-semibold w-8">#</th>
                   <th className="text-left px-4 py-3 text-slate-600 font-semibold">Ad Soyad</th>
+                  <th className="text-center px-3 py-3 text-slate-600 font-semibold">Sınıf</th>
                   <th className="text-right px-4 py-3 text-slate-600 font-semibold">Aylık Ücret</th>
                   {months.map((mo) => (
-                    <th key={mo.key} className="text-center px-4 py-3 text-slate-600 font-semibold min-w-[120px]">
+                    <th key={mo.key} className="text-center px-4 py-3 text-slate-600 font-semibold min-w-[130px]">
                       {mo.label}
                     </th>
                   ))}
@@ -284,39 +347,54 @@ export default function KursPage() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={months.length + 5} className="text-center py-12 text-slate-400 text-sm italic">
-                      {students.length === 0 ? "Henüz öğrenci eklenmedi." : "Arama sonucu bulunamadı."}
+                    <td colSpan={months.length + 6} className="text-center py-12 text-slate-400 text-sm italic">
+                      {students.length === 0 ? "Henüz öğrenci eklenmedi." : "Sonuç bulunamadı."}
                     </td>
                   </tr>
                 ) : (
                   filtered.map((student, idx) => {
-                    const paidCount = months.filter((mo) => student.payments[mo.key]).length
+                    const paidCount = months.filter((mo) => student.payments[mo.key]?.paid).length
                     const totalPaid = paidCount * student.monthlyFee
                     const totalDebt = (months.length - paidCount) * student.monthlyFee
-
                     return (
                       <tr key={student.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                         <td className="px-4 py-3 text-slate-400 text-xs">{idx + 1}</td>
                         <td className="px-4 py-3 font-medium text-slate-800">{student.name}</td>
+                        <td className="px-3 py-3 text-center">
+                          {student.sinif ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-violet-100 text-violet-700">
+                              {student.sinif}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300 text-xs">—</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-right text-slate-600 tabular-nums">{formatTL(student.monthlyFee)}</td>
                         {months.map((mo) => {
-                          const paid = student.payments[mo.key] ?? false
+                          const payment = student.payments[mo.key]
+                          const paid = payment?.paid ?? false
+                          const payDate = payment?.date ?? ""
                           const toggleKey = `${student.id}-${mo.key}`
                           const isToggling = toggling === toggleKey
                           return (
                             <td key={mo.key} className="px-4 py-3 text-center">
                               <button
-                                onClick={() => togglePayment(student.id, mo.key, paid)}
+                                onClick={() => togglePayment(student.id, mo.key, payment)}
                                 disabled={isToggling}
                                 className={cn(
-                                  "inline-flex items-center justify-center px-3 py-1.5 rounded-lg text-xs font-semibold transition-all min-w-[90px]",
+                                  "inline-flex flex-col items-center justify-center px-3 py-1.5 rounded-lg text-xs font-semibold transition-all min-w-[100px]",
                                   paid
                                     ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
                                     : "bg-red-100 text-red-700 hover:bg-red-200",
                                   isToggling && "opacity-50 cursor-wait"
                                 )}
                               >
-                                {isToggling ? "…" : paid ? "✓ Ödendi" : "✗ Ödenmedi"}
+                                <span>{isToggling ? "…" : paid ? "✓ Ödendi" : "✗ Ödenmedi"}</span>
+                                {paid && payDate && (
+                                  <span className="text-[10px] font-normal opacity-70 mt-0.5">
+                                    {formatDate(payDate)}
+                                  </span>
+                                )}
                               </button>
                             </td>
                           )
@@ -342,15 +420,14 @@ export default function KursPage() {
                 )}
               </tbody>
 
-              {/* Footer totals */}
               {filtered.length > 0 && (
                 <tfoot>
                   <tr className="border-t-2 border-slate-200 bg-slate-50">
-                    <td colSpan={3} className="px-4 py-3 font-bold text-slate-700">
-                      TOPLAM ({filtered.length} öğrenci)
+                    <td colSpan={4} className="px-4 py-3 font-bold text-slate-700">
+                      TOPLAM ({filtered.length} öğrenci{selectedSinif ? ` · ${selectedSinif}` : ""})
                     </td>
                     {months.map((mo) => {
-                      const paidCount = filtered.filter((s) => s.payments[mo.key]).length
+                      const paidCount = filtered.filter((s) => s.payments[mo.key]?.paid).length
                       return (
                         <td key={mo.key} className="px-4 py-3 text-center">
                           <span className="text-xs text-slate-500">{paidCount}/{filtered.length} ödedi</span>
