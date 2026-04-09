@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Receipt,
+  Table2,
 } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -51,6 +52,12 @@ const navItems: NavItem[] = [
     title: "Puantaj",
     href: "/attendance",
     icon: CalendarCheck,
+    roles: ["admin", "manager"],
+  },
+  {
+    title: "Aylık Tablo",
+    href: "/aylik-tablo",
+    icon: Table2,
     roles: ["admin", "manager"],
   },
   {
