@@ -11,43 +11,21 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
-  PlusCircle,
-  Trash2,
-  Save,
-  ClipboardList,
-  Eye,
-  TrendingUp,
-  TrendingDown,
-  AlertCircle,
+  PlusCircle, Trash2, Save, ClipboardList,
+  TrendingUp, TrendingDown, AlertCircle, Pencil, X,
 } from "lucide-react"
 import { toast } from "sonner"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { format } from "date-fns"
 
-interface Business {
-  id: string
-  name: string
-}
-
-interface Category {
-  id: string
-  name: string
-  color: string
-}
-
+interface Business { id: string; name: string }
+interface Category { id: string; name: string; color: string }
 interface Closing {
   id: string
   date: string
+  businessId: string
   business: { name: string }
   totalIncome: number
   totalExpense: number
@@ -56,6 +34,8 @@ interface Closing {
   cashIncome: number
   cardIncome: number
   ticketIncome: number
+  notes: string
+  expenses: Array<{ id: string; categoryId: string; category: { name: string; color: string }; amount: number; description: string }>
 }
 
 const expenseRow = z.object({
@@ -83,41 +63,24 @@ export default function DailyEntryPage() {
   const [recentClosings, setRecentClosings] = useState<Closing[]>([])
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(true)
-  const [viewClosing, setViewClosing] = useState<Closing | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
-  const {
-    register,
-    handleSubmit,
-    watch,
-    setValue,
-    reset,
-    control,
-    formState: { errors },
-  } = useForm<FormData>({
+  const { register, handleSubmit, watch, setValue, reset, control, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(formSchema) as any,
     defaultValues: {
-      businessId: "",
-      date: format(new Date(), "yyyy-MM-dd"),
-      cashIncome: "",
-      cardIncome: "",
-      ticketIncome: "",
-      notes: "",
-      expenses: [],
+      businessId: "", date: format(new Date(), "yyyy-MM-dd"),
+      cashIncome: "", cardIncome: "", ticketIncome: "",
+      notes: "", expenses: [],
     },
   })
 
   const { fields, append, remove } = useFieldArray({ control, name: "expenses" })
-
   const watchedValues = watch()
   const totalIncome =
     (parseFloat(watchedValues.cashIncome || "0") || 0) +
     (parseFloat(watchedValues.cardIncome || "0") || 0) +
     (parseFloat(watchedValues.ticketIncome || "0") || 0)
-
-  const totalExpense = watchedValues.expenses.reduce(
-    (sum, e) => sum + (parseFloat(e.amount || "0") || 0),
-    0
-  )
+  const totalExpense = watchedValues.expenses.reduce((sum, e) => sum + (parseFloat(e.amount || "0") || 0), 0)
   const net = totalIncome - totalExpense
 
   useEffect(() => {
@@ -133,41 +96,90 @@ export default function DailyEntryPage() {
     }).finally(() => setFetching(false))
   }, [])
 
+  function refreshList() {
+    fetch("/api/daily-closings?limit=20").then((r) => r.json()).then(setRecentClosings)
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    reset({
+      businessId: "", date: format(new Date(), "yyyy-MM-dd"),
+      cashIncome: "", cardIncome: "", ticketIncome: "",
+      notes: "", expenses: [],
+    })
+  }
+
+  async function loadForEdit(closing: Closing) {
+    // Fetch full record with expenses
+    const res = await fetch(`/api/daily-closings/${closing.id}`)
+    const data = await res.json()
+    setEditingId(closing.id)
+    reset({
+      businessId: data.businessId,
+      date: data.date,
+      cashIncome: String(data.cashIncome || ""),
+      cardIncome: String(data.cardIncome || ""),
+      ticketIncome: String(data.ticketIncome || ""),
+      notes: data.notes ?? "",
+      expenses: (data.expenses ?? []).map((e: any) => ({
+        categoryId: e.categoryId,
+        amount: String(e.amount),
+        description: e.description ?? "",
+        paymentMethod: "CASH" as const,
+      })),
+    })
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
   async function onSubmit(data: FormData) {
     setLoading(true)
     try {
-      const res = await fetch("/api/daily-closings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      })
-
-      if (res.status === 409) {
-        toast.error("Bu işletme için bu tarihe ait kayıt zaten mevcut!")
-        return
+      if (editingId) {
+        // PATCH — update existing
+        const res = await fetch(`/api/daily-closings/${editingId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        })
+        if (!res.ok) {
+          const err = await res.json()
+          toast.error(err.error || "Güncellenemedi")
+          return
+        }
+        toast.success("Kayıt güncellendi!")
+        setEditingId(null)
+        reset({
+          businessId: data.businessId,
+          date: format(new Date(), "yyyy-MM-dd"),
+          cashIncome: "", cardIncome: "", ticketIncome: "",
+          notes: "", expenses: [],
+        })
+        refreshList()
+      } else {
+        // POST — new record
+        const res = await fetch("/api/daily-closings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        })
+        if (res.status === 409) {
+          toast.error("Bu işletme için bu tarihe ait kayıt zaten mevcut!")
+          return
+        }
+        if (!res.ok) {
+          const err = await res.json()
+          toast.error(err.error || "Kayıt oluşturulamadı")
+          return
+        }
+        toast.success("Günlük kapanış kaydedildi!")
+        reset({
+          businessId: data.businessId,
+          date: format(new Date(), "yyyy-MM-dd"),
+          cashIncome: "", cardIncome: "", ticketIncome: "",
+          notes: "", expenses: [],
+        })
+        refreshList()
       }
-
-      if (!res.ok) {
-        const err = await res.json()
-        toast.error(err.error || "Kayıt oluşturulamadı")
-        return
-      }
-
-      toast.success("Günlük kapanış kaydedildi!")
-      reset({
-        businessId: data.businessId,
-        date: format(new Date(), "yyyy-MM-dd"),
-        cashIncome: "0",
-        cardIncome: "0",
-        ticketIncome: "0",
-        notes: "",
-        expenses: [],
-      })
-
-      // Listeyi güncelle
-      fetch("/api/daily-closings?limit=20")
-        .then((r) => r.json())
-        .then(setRecentClosings)
     } finally {
       setLoading(false)
     }
@@ -175,12 +187,7 @@ export default function DailyEntryPage() {
 
   function addExpenseRow() {
     if (categories.length === 0) return
-    append({
-      categoryId: categories[0].id,
-      amount: "",
-      description: "",
-      paymentMethod: "CASH",
-    })
+    append({ categoryId: categories[0].id, amount: "", description: "", paymentMethod: "CASH" })
   }
 
   if (fetching) {
@@ -203,12 +210,24 @@ export default function DailyEntryPage() {
         {/* Form */}
         <div className="xl:col-span-2">
           <form onSubmit={handleSubmit(onSubmit as any)}>
-            <Card>
+            <Card className={editingId ? "border-amber-300 ring-1 ring-amber-300" : ""}>
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <ClipboardList className="h-4 w-4" />
-                  Yeni Kapanış Kaydı
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <ClipboardList className="h-4 w-4" />
+                    {editingId ? "Kaydı Düzenle" : "Yeni Kapanış Kaydı"}
+                  </CardTitle>
+                  {editingId && (
+                    <Button type="button" variant="ghost" size="sm" onClick={cancelEdit} className="text-slate-500 gap-1">
+                      <X className="h-4 w-4" /> İptal
+                    </Button>
+                  )}
+                </div>
+                {editingId && (
+                  <p className="text-xs text-amber-600 bg-amber-50 rounded px-2 py-1 mt-1">
+                    Düzenleme modu — değişiklikleri kaydetmek için Güncelle butonuna basın.
+                  </p>
+                )}
               </CardHeader>
               <CardContent className="space-y-5">
                 {/* İşletme ve Tarih */}
@@ -218,32 +237,27 @@ export default function DailyEntryPage() {
                     <Select
                       value={watchedValues.businessId}
                       onValueChange={(v) => setValue("businessId", v)}
+                      disabled={!!editingId}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="İşletme seçin..." />
                       </SelectTrigger>
                       <SelectContent>
                         {businesses.map((b) => (
-                          <SelectItem key={b.id} value={b.id}>
-                            {b.name}
-                          </SelectItem>
+                          <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    {errors.businessId && (
-                      <p className="text-xs text-red-500">{errors.businessId.message}</p>
-                    )}
+                    {errors.businessId && <p className="text-xs text-red-500">{errors.businessId.message}</p>}
                   </div>
                   <div className="space-y-1.5">
                     <Label>Tarih *</Label>
-                    <Input type="date" {...register("date")} />
-                    {errors.date && (
-                      <p className="text-xs text-red-500">{errors.date.message}</p>
-                    )}
+                    <Input type="date" {...register("date")} disabled={!!editingId} />
+                    {errors.date && <p className="text-xs text-red-500">{errors.date.message}</p>}
                   </div>
                 </div>
 
-                {/* Gelir Alanları */}
+                {/* Gelir */}
                 <div>
                   <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                     <TrendingUp className="h-4 w-4 text-green-500" />
@@ -252,36 +266,15 @@ export default function DailyEntryPage() {
                   <div className="grid grid-cols-3 gap-3">
                     <div className="space-y-1.5">
                       <Label className="text-xs">Nakit (₺)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="Tutar girin"
-                        {...register("cashIncome")}
-                        className="text-right"
-                      />
+                      <Input type="number" step="0.01" min="0" placeholder="Tutar girin" {...register("cashIncome")} className="text-right" />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs">Kart (₺)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="Tutar girin"
-                        {...register("cardIncome")}
-                        className="text-right"
-                      />
+                      <Input type="number" step="0.01" min="0" placeholder="Tutar girin" {...register("cardIncome")} className="text-right" />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs">Bilet (₺)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="Tutar girin"
-                        {...register("ticketIncome")}
-                        className="text-right"
-                      />
+                      <Input type="number" step="0.01" min="0" placeholder="Tutar girin" {...register("ticketIncome")} className="text-right" />
                     </div>
                   </div>
                   <div className="mt-2 text-right text-sm font-semibold text-green-600">
@@ -289,25 +282,18 @@ export default function DailyEntryPage() {
                   </div>
                 </div>
 
-                {/* Gider Alanları */}
+                {/* Giderler */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-sm font-semibold text-gray-700 flex items-center gap-2">
                       <TrendingDown className="h-4 w-4 text-red-500" />
                       Gider Kalemleri
                     </p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={addExpenseRow}
-                      className="h-8 text-xs"
-                    >
+                    <Button type="button" variant="outline" size="sm" onClick={addExpenseRow} className="h-8 text-xs">
                       <PlusCircle className="h-3.5 w-3.5 mr-1" />
                       Gider Ekle
                     </Button>
                   </div>
-
                   {fields.length === 0 ? (
                     <div className="text-center py-6 text-sm text-muted-foreground bg-gray-50 rounded-lg border-2 border-dashed">
                       Gider kalemi yok. Eklemek için yukarıdaki butona tıklayın.
@@ -315,11 +301,7 @@ export default function DailyEntryPage() {
                   ) : (
                     <div className="space-y-2">
                       {fields.map((field, index) => (
-                        <div
-                          key={field.id}
-                          className="grid grid-cols-12 gap-2 items-start p-2 bg-gray-50 rounded-lg"
-                        >
-                          {/* Kategori */}
+                        <div key={field.id} className="grid grid-cols-12 gap-2 items-start p-2 bg-gray-50 rounded-lg">
                           <div className="col-span-4">
                             <Select
                               value={watchedValues.expenses[index]?.categoryId}
@@ -330,41 +312,24 @@ export default function DailyEntryPage() {
                               </SelectTrigger>
                               <SelectContent>
                                 {categories.map((cat) => (
-                                  <SelectItem key={cat.id} value={cat.id}>
-                                    {cat.name}
-                                  </SelectItem>
+                                  <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
                           </div>
-                          {/* Tutar */}
                           <div className="col-span-3">
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              placeholder="0.00"
+                            <Input type="number" step="0.01" min="0" placeholder="0.00"
                               className="h-8 text-xs text-right bg-white"
-                              {...register(`expenses.${index}.amount`)}
-                            />
+                              {...register(`expenses.${index}.amount`)} />
                           </div>
-                          {/* Açıklama */}
                           <div className="col-span-4">
-                            <Input
-                              placeholder="Not (opsiyonel)"
-                              className="h-8 text-xs bg-white"
-                              {...register(`expenses.${index}.description`)}
-                            />
+                            <Input placeholder="Not (opsiyonel)" className="h-8 text-xs bg-white"
+                              {...register(`expenses.${index}.description`)} />
                           </div>
-                          {/* Sil */}
                           <div className="col-span-1">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
+                            <Button type="button" variant="ghost" size="icon"
                               className="h-8 w-8 text-red-400 hover:text-red-600"
-                              onClick={() => remove(index)}
-                            >
+                              onClick={() => remove(index)}>
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           </div>
@@ -372,7 +337,6 @@ export default function DailyEntryPage() {
                       ))}
                     </div>
                   )}
-
                   {totalExpense > 0 && (
                     <div className="mt-2 text-right text-sm font-semibold text-red-600">
                       Toplam Gider: {formatCurrency(totalExpense)}
@@ -381,11 +345,7 @@ export default function DailyEntryPage() {
                 </div>
 
                 {/* Net */}
-                <div
-                  className={`p-3 rounded-lg text-center ${
-                    net >= 0 ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"
-                  }`}
-                >
+                <div className={`p-3 rounded-lg text-center ${net >= 0 ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"}`}>
                   <p className="text-xs text-muted-foreground">Net Durum</p>
                   <p className={`text-2xl font-bold ${net >= 0 ? "text-green-700" : "text-red-700"}`}>
                     {formatCurrency(net)}
@@ -395,14 +355,9 @@ export default function DailyEntryPage() {
                 {/* Notlar */}
                 <div className="space-y-1.5">
                   <Label className="text-sm">Notlar (opsiyonel)</Label>
-                  <Textarea
-                    placeholder="Gün hakkında not ekleyin..."
-                    rows={2}
-                    {...register("notes")}
-                  />
+                  <Textarea placeholder="Gün hakkında not ekleyin..." rows={2} {...register("notes")} />
                 </div>
 
-                {/* Yüksek tutar uyarısı */}
                 {(totalIncome > 50000 || totalExpense > 20000) && (
                   <div className="flex items-center gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded p-3 text-sm">
                     <AlertCircle className="h-4 w-4 flex-shrink-0" />
@@ -412,7 +367,7 @@ export default function DailyEntryPage() {
 
                 <Button type="submit" className="w-full" disabled={loading}>
                   <Save className="h-4 w-4 mr-2" />
-                  {loading ? "Kaydediliyor..." : "Kaydet"}
+                  {loading ? "Kaydediliyor..." : editingId ? "Güncelle" : "Kaydet"}
                 </Button>
               </CardContent>
             </Card>
@@ -431,35 +386,33 @@ export default function DailyEntryPage() {
               ) : (
                 <div className="divide-y">
                   {recentClosings.map((closing) => (
-                    <div key={closing.id} className="px-4 py-3 hover:bg-gray-50 transition-colors">
+                    <div key={closing.id} className={`px-4 py-3 hover:bg-gray-50 transition-colors ${editingId === closing.id ? "bg-amber-50" : ""}`}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="text-sm font-medium truncate">{closing.business.name}</p>
                           <p className="text-xs text-muted-foreground">{formatDate(closing.date)}</p>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <p className="text-xs text-green-600 font-medium">
-                            +{formatCurrency(Number(closing.totalIncome))}
-                          </p>
-                          <p className="text-xs text-red-500">
-                            -{formatCurrency(Number(closing.totalExpense))}
-                          </p>
+                          <p className="text-xs text-green-600 font-medium">+{formatCurrency(Number(closing.totalIncome))}</p>
+                          <p className="text-xs text-red-500">-{formatCurrency(Number(closing.totalExpense))}</p>
                         </div>
                       </div>
-                      <div className="flex items-center justify-between mt-1">
-                        <Badge
-                          variant={closing.status === "CLOSED" ? "success" : "warning"}
-                          className="text-xs"
-                        >
-                          {closing.status === "CLOSED" ? "Kapalı" : "Açık"}
-                        </Badge>
-                        <span
-                          className={`text-xs font-semibold ${
-                            Number(closing.netAmount) >= 0 ? "text-green-600" : "text-red-600"
-                          }`}
-                        >
+                      <div className="flex items-center justify-between mt-1.5">
+                        <span className={`text-xs font-semibold ${Number(closing.netAmount) >= 0 ? "text-green-600" : "text-red-600"}`}>
                           {formatCurrency(Number(closing.netAmount))}
                         </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 text-xs px-2 gap-1"
+                          onClick={() => editingId === closing.id ? cancelEdit() : loadForEdit(closing)}
+                        >
+                          {editingId === closing.id ? (
+                            <><X className="h-3 w-3" /> İptal</>
+                          ) : (
+                            <><Pencil className="h-3 w-3" /> Düzenle</>
+                          )}
+                        </Button>
                       </div>
                     </div>
                   ))}
