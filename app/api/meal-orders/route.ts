@@ -112,8 +112,9 @@ export async function POST(req: NextRequest) {
     const allRows = await getRows(TABS.MEALS)
     const createdAt = new Date().toISOString()
 
-    const tasks: Promise<void>[] = []
+    let saved = 0
 
+    // Sequential — Google Sheets API doesn't handle parallel writes reliably
     for (const entry of body.entries as Array<{ businessId: string; date: string; count: number }>) {
       const { businessId, date, count } = entry
       if (!hasBusinessAccess(user, businessId)) continue
@@ -124,22 +125,19 @@ export async function POST(req: NextRequest) {
 
       if (existingIndex !== -1) {
         const existingId = allRows[existingIndex][0]
-        tasks.push(
-          updateRowByIndex(TABS.MEALS, existingIndex, [
-            existingId, date, businessId, count, mealPrice, totalCost,
-            user.id, user.name, createdAt,
-          ])
-        )
+        await updateRowByIndex(TABS.MEALS, existingIndex, [
+          existingId, date, businessId, count, mealPrice, totalCost,
+          user.id, user.name, createdAt,
+        ])
+        saved++
       } else if (count > 0) {
         const id = generateId()
-        tasks.push(
-          appendRow(TABS.MEALS, [id, date, businessId, count, mealPrice, totalCost, user.id, user.name, createdAt])
-        )
+        await appendRow(TABS.MEALS, [id, date, businessId, count, mealPrice, totalCost, user.id, user.name, createdAt])
+        saved++
       }
     }
 
-    await Promise.all(tasks)
-    return NextResponse.json({ saved: tasks.length })
+    return NextResponse.json({ saved })
   }
 
   // ── Tekil kayıt ───────────────────────────────────────────────────────────
