@@ -56,9 +56,10 @@ export default function MealOrdersPage() {
   const [mealPrice, setMealPrice] = useState(50)
   const [weekData, setWeekData] = useState<Record<string, Record<string, number>>>({})
   const [fetching, setFetching] = useState(true)
+  const [weekFetching, setWeekFetching] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  // Fetch month data
+  // Fetch summary data for the monthly table (does NOT touch weekData)
   const fetchMonth = useCallback((month: string) => {
     setFetching(true)
     fetch(`/api/meal-orders?month=${month}`)
@@ -71,24 +72,39 @@ export default function MealOrdersPage() {
       .finally(() => setFetching(false))
   }, [])
 
+  // Fetch week-specific entries using from/to — handles weeks spanning two months
+  const fetchWeek = useCallback((start: Date) => {
+    const days = getWeekDays(start)
+    const from = format(days[0], "yyyy-MM-dd")
+    const to = format(days[5], "yyyy-MM-dd")
+    setWeekFetching(true)
+    fetch(`/api/meal-orders?from=${from}&to=${to}`)
+      .then((r) => r.json())
+      .then((data) => {
+        const weekEntries: MealEntry[] = data.entries ?? []
+        const newData: Record<string, Record<string, number>> = {}
+        for (const biz of BUSINESSES) {
+          newData[biz.id] = {}
+          for (const day of days) {
+            const dayStr = format(day, "yyyy-MM-dd")
+            const entry = weekEntries.find((e) => e.businessId === biz.id && e.date === dayStr)
+            newData[biz.id][dayStr] = entry ? entry.count : 0
+          }
+        }
+        setWeekData(newData)
+      })
+      .catch(() => toast.error("Hafta verisi yüklenemedi"))
+      .finally(() => setWeekFetching(false))
+  }, [])
+
   useEffect(() => {
     fetchMonth(selectedMonth)
   }, [selectedMonth, fetchMonth])
 
-  // Pre-populate grid from loaded entries
+  // Re-fetch the week grid whenever weekStart changes
   useEffect(() => {
-    const days = getWeekDays(weekStart)
-    const newData: Record<string, Record<string, number>> = {}
-    for (const biz of BUSINESSES) {
-      newData[biz.id] = {}
-      for (const day of days) {
-        const dayStr = format(day, "yyyy-MM-dd")
-        const entry = allEntries.find((e) => e.businessId === biz.id && e.date === dayStr)
-        newData[biz.id][dayStr] = entry ? entry.count : 0
-      }
-    }
-    setWeekData(newData)
-  }, [weekStart, allEntries])
+    fetchWeek(weekStart)
+  }, [weekStart, fetchWeek])
 
   function prevWeek() {
     const newStart = subWeeks(weekStart, 1)
@@ -131,6 +147,7 @@ export default function MealOrdersPage() {
       })
       if (res.ok) {
         toast.success("Haftalık siparişler kaydedildi")
+        // Only refresh the monthly summary — don't reset the week grid
         fetchMonth(selectedMonth)
       } else {
         toast.error("Kaydedilemedi")
@@ -199,9 +216,9 @@ export default function MealOrdersPage() {
               </Button>
             </div>
 
-            <Button onClick={saveWeek} disabled={saving}>
+            <Button onClick={saveWeek} disabled={saving || weekFetching}>
               <Save className="h-4 w-4 mr-2" />
-              {saving ? "Kaydediliyor..." : "Haftayı Kaydet"}
+              {saving ? "Kaydediliyor..." : weekFetching ? "Yükleniyor..." : "Haftayı Kaydet"}
             </Button>
           </div>
         </CardHeader>
