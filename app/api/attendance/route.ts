@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthUser, hasBusinessAccess, getAccessibleBusinessIds } from "@/lib/auth-utils"
-import { getRows, appendRow, generateId } from "@/lib/sheets"
+import { getRows, appendRow, generateId, deleteRowsByIndices } from "@/lib/sheets"
 import { TABS, getBusinessName } from "@/lib/constants"
 import { z } from "zod"
 
@@ -98,4 +98,39 @@ export async function POST(req: NextRequest) {
     },
     { status: 201 }
   )
+}
+
+// DELETE /api/attendance?businessId=X&month=YYYY-MM  → toplu sil
+export async function DELETE(req: NextRequest) {
+  const user = await getAuthUser()
+  if (!user || user.role === "staff") {
+    return NextResponse.json({ error: "Yetkisiz" }, { status: 403 })
+  }
+
+  const { searchParams } = new URL(req.url)
+  const businessId = searchParams.get("businessId")
+  const month = searchParams.get("month")
+
+  if (!businessId || !month) {
+    return NextResponse.json({ error: "businessId ve month gerekli" }, { status: 400 })
+  }
+
+  if (!hasBusinessAccess(user, businessId)) {
+    return NextResponse.json({ error: "Bu işletmeye erişim yok" }, { status: 403 })
+  }
+
+  const rows = await getRows(TABS.ATTENDANCE)
+  const indices: number[] = []
+  rows.forEach((row, i) => {
+    if (row[3] === businessId && (row[1] ?? "").startsWith(month)) {
+      indices.push(i)
+    }
+  })
+
+  if (indices.length === 0) {
+    return NextResponse.json({ deleted: 0 })
+  }
+
+  await deleteRowsByIndices(TABS.ATTENDANCE, indices)
+  return NextResponse.json({ deleted: indices.length })
 }

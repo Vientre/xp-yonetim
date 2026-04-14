@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
-import { CalendarCheck, Save, Plus, Clock, Pencil, Trash2, X, Users, UserPlus } from "lucide-react"
+import { CalendarCheck, Save, Plus, Clock, Pencil, Trash2, X, Users, UserPlus, Eraser } from "lucide-react"
 import { toast } from "sonner"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { format } from "date-fns"
@@ -80,6 +80,11 @@ export default function AttendancePage() {
 
   // Edit mode (single row)
   const [editEntry, setEditEntry] = useState<AttendanceEntry | null>(null)
+
+  // Bulk delete
+  const [bulkBizId, setBulkBizId] = useState("")
+  const [bulkMonth, setBulkMonth] = useState(format(new Date(), "yyyy-MM"))
+  const [bulkDeleting, setBulkDeleting] = useState(false)
 
   // ── Fetchers ──
   const fetchAll = useCallback(async () => {
@@ -224,6 +229,24 @@ export default function AttendancePage() {
     } finally { setDeleting(null) }
   }
 
+  // ── Bulk delete ──
+  async function handleBulkDelete() {
+    if (!bulkBizId) { toast.error("İşletme seçin"); return }
+    const bizName = BUSINESSES.find((b) => b.id === bulkBizId)?.name ?? bulkBizId
+    const count = entries.filter((e) => e.businessId === bulkBizId && e.date.startsWith(bulkMonth)).length
+    if (count === 0) { toast.error("Bu dönemde kayıt yok"); return }
+    if (!confirm(`"${bizName}" — ${bulkMonth} için ${count} kayıt silinecek. Emin misiniz?`)) return
+    setBulkDeleting(true)
+    try {
+      const res = await fetch(`/api/attendance?businessId=${bulkBizId}&month=${bulkMonth}`, { method: "DELETE" })
+      const data = await res.json()
+      if (!res.ok) { toast.error("Silinemedi"); return }
+      toast.success(`${data.deleted} kayıt silindi`)
+      fetchAll()
+    } catch { toast.error("Hata oluştu") }
+    finally { setBulkDeleting(false) }
+  }
+
   // ── Summary ──
   const thisMonth = format(new Date(), "yyyy-MM")
   const thisMonthEntries = entries.filter((e) => e.date.startsWith(thisMonth))
@@ -317,6 +340,50 @@ export default function AttendancePage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Bulk delete */}
+      <Card className="border-red-200 bg-red-50/30">
+        <CardContent className="p-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex items-center gap-2 text-red-700">
+              <Eraser className="h-4 w-4" />
+              <span className="text-sm font-medium">Toplu Sil</span>
+            </div>
+            <div className="flex-1 flex flex-wrap gap-2 items-end">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">İşletme</Label>
+                <Select value={bulkBizId} onValueChange={setBulkBizId}>
+                  <SelectTrigger className="w-44 h-8 bg-white text-sm">
+                    <SelectValue placeholder="Seçin..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {BUSINESSES.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Ay</Label>
+                <Input
+                  type="month"
+                  value={bulkMonth}
+                  onChange={(e) => setBulkMonth(e.target.value)}
+                  className="h-8 bg-white text-sm w-36"
+                />
+              </div>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting || !bulkBizId}
+                className="h-8"
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                {bulkDeleting ? "Siliniyor..." : "Tümünü Sil"}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4">

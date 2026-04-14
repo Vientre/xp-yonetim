@@ -86,6 +86,36 @@ export async function updateRowByIndex(
 }
 
 /**
+ * Delete multiple rows by their 0-based data indices in a single batchUpdate.
+ * Indices must be unique; they are sorted descending internally so deletions don't shift each other.
+ */
+export async function deleteRowsByIndices(tab: string, rowIndices: number[]): Promise<void> {
+  if (rowIndices.length === 0) return
+  const sheets = await getSheets()
+  const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID() })
+  const sheet = spreadsheet.data.sheets?.find((s) => s.properties?.title === tab)
+  if (!sheet) throw new Error(`Tab bulunamadı: ${tab}`)
+  const sheetId = sheet.properties?.sheetId
+
+  // Sort descending so each deletion doesn't affect the indices of later rows
+  const sorted = [...new Set(rowIndices)].sort((a, b) => b - a)
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: SHEET_ID(),
+    requestBody: {
+      requests: sorted.map((rowIndex) => {
+        const startIndex = rowIndex + 1 // +1 for header row
+        return {
+          deleteDimension: {
+            range: { sheetId, dimension: "ROWS", startIndex, endIndex: startIndex + 1 },
+          },
+        }
+      }),
+    },
+  })
+}
+
+/**
  * Delete a row by its 0-based data index (excludes header row).
  * Uses batchUpdate to physically remove the row.
  */
