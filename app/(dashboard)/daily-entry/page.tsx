@@ -231,7 +231,7 @@ export default function DailyEntryPage() {
               </CardHeader>
               <CardContent className="space-y-5">
                 {/* İşletme ve Tarih */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label>İşletme *</Label>
                     <Select
@@ -263,7 +263,7 @@ export default function DailyEntryPage() {
                     <TrendingUp className="h-4 w-4 text-green-500" />
                     Gelir Bilgileri
                   </p>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className="space-y-1.5">
                       <Label className="text-xs">Nakit (₺)</Label>
                       <Input type="number" step="0.01" min="0" placeholder="Tutar girin" {...register("cashIncome")} className="text-right" />
@@ -301,38 +301,34 @@ export default function DailyEntryPage() {
                   ) : (
                     <div className="space-y-2">
                       {fields.map((field, index) => (
-                        <div key={field.id} className="grid grid-cols-12 gap-2 items-start p-2 bg-gray-50 rounded-lg">
-                          <div className="col-span-4">
-                            <Select
-                              value={watchedValues.expenses[index]?.categoryId}
-                              onValueChange={(v) => setValue(`expenses.${index}.categoryId`, v)}
-                            >
-                              <SelectTrigger className="h-8 text-xs bg-white">
-                                <SelectValue placeholder="Kategori" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {categories.map((cat) => (
-                                  <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="col-span-3">
+                        <div key={field.id} className="p-2 bg-gray-50 rounded-lg space-y-2">
+                          <div className="flex gap-2">
+                            <div className="flex-1">
+                              <Select
+                                value={watchedValues.expenses[index]?.categoryId}
+                                onValueChange={(v) => setValue(`expenses.${index}.categoryId`, v)}
+                              >
+                                <SelectTrigger className="h-8 text-xs bg-white">
+                                  <SelectValue placeholder="Kategori" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {categories.map((cat) => (
+                                    <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
                             <Input type="number" step="0.01" min="0" placeholder="0.00"
-                              className="h-8 text-xs text-right bg-white"
+                              className="h-8 text-xs text-right bg-white w-24"
                               {...register(`expenses.${index}.amount`)} />
-                          </div>
-                          <div className="col-span-4">
-                            <Input placeholder="Not (opsiyonel)" className="h-8 text-xs bg-white"
-                              {...register(`expenses.${index}.description`)} />
-                          </div>
-                          <div className="col-span-1">
                             <Button type="button" variant="ghost" size="icon"
-                              className="h-8 w-8 text-red-400 hover:text-red-600"
+                              className="h-8 w-8 flex-shrink-0 text-red-400 hover:text-red-600"
                               onClick={() => remove(index)}>
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           </div>
+                          <Input placeholder="Not (opsiyonel)" className="h-8 text-xs bg-white"
+                            {...register(`expenses.${index}.description`)} />
                         </div>
                       ))}
                     </div>

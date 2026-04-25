@@ -21,6 +21,7 @@ import {
   GraduationCap,
   Swords,
   Zap,
+  X,
 } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -110,9 +111,10 @@ const navItems: NavItem[] = [
 interface SidebarProps {
   userRole: Role | string
   userName: string
+  onClose?: () => void
 }
 
-export function Sidebar({ userRole, userName }: SidebarProps) {
+export function Sidebar({ userRole, userName, onClose }: SidebarProps) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
 
@@ -134,10 +136,19 @@ export function Sidebar({ userRole, userName }: SidebarProps) {
           <Building2 className="w-5 h-5 text-white" />
         </div>
         {!collapsed && (
-          <div className="overflow-hidden">
+          <div className="overflow-hidden flex-1">
             <p className="font-semibold text-sm leading-tight truncate">XP Yönetim</p>
             <p className="text-xs text-slate-400 truncate">Sistemi</p>
           </div>
+        )}
+        {/* Close button — mobile only */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="md:hidden ml-auto p-1 rounded text-slate-400 hover:text-white"
+          >
+            <X className="w-5 h-5" />
+          </button>
         )}
       </div>
 
@@ -151,6 +162,7 @@ export function Sidebar({ userRole, userName }: SidebarProps) {
               <li key={item.href}>
                 <Link
                   href={item.href}
+                  onClick={onClose}
                   className={cn(
                     "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                     isActive

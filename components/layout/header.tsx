@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { LogOut, User, Settings, Bell } from "lucide-react"
+import { LogOut, User, Settings, Bell, Menu } from "lucide-react"
 import { getRoleName } from "@/lib/utils"
 import type { Role } from "@/lib/constants"
 
@@ -20,9 +20,10 @@ interface HeaderProps {
   userName: string
   userEmail: string
   userRole: Role | string
+  onMenuClick?: () => void
 }
 
-export function Header({ userName, userEmail, userRole }: HeaderProps) {
+export function Header({ userName, userEmail, userRole, onMenuClick }: HeaderProps) {
   const router = useRouter()
 
   const initials = userName
@@ -39,6 +40,15 @@ export function Header({ userName, userEmail, userRole }: HeaderProps) {
 
   return (
     <header className="h-14 border-b bg-white flex items-center justify-between px-4 gap-4">
+      {/* Hamburger — only on mobile */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="md:hidden text-gray-500"
+        onClick={onMenuClick}
+      >
+        <Menu className="h-5 w-5" />
+      </Button>
       <div className="flex-1" />
 
       <div className="flex items-center gap-2">
