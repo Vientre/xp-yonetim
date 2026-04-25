@@ -15,6 +15,7 @@ const expenseRow = z.object({
 })
 
 const patchSchema = z.object({
+  date: z.string().min(1).optional(),
   cashIncome: z.string().default("0"),
   cardIncome: z.string().default("0"),
   ticketIncome: z.string().default("0"),
@@ -85,14 +86,14 @@ export async function PATCH(
   const parsed = patchSchema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
-  const { cashIncome, cardIncome, ticketIncome, notes, expenses } = parsed.data
+  const { date: newDate, cashIncome, cardIncome, ticketIncome, notes, expenses } = parsed.data
+  const date = newDate ?? result.row[1]
   const cash = parseFloat(cashIncome) || 0
   const card = parseFloat(cardIncome) || 0
   const ticket = parseFloat(ticketIncome) || 0
   const totalIncome = cash + card + ticket
   const totalExpense = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0)
   const net = totalIncome - totalExpense
-  const date = result.row[1]
 
   // Update GunlukGelir row
   await updateRowByIndex(TABS.DAILY_INCOME, result.index, [
