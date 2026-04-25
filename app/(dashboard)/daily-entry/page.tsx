@@ -252,7 +252,7 @@ export default function DailyEntryPage() {
                   </div>
                   <div className="space-y-1.5">
                     <Label>Tarih *</Label>
-                    <Input type="date" {...register("date")} disabled={!!editingId} />
+                    <Input type="date" {...register("date")} />
                     {errors.date && <p className="text-xs text-red-500">{errors.date.message}</p>}
                   </div>
                 </div>
