@@ -19,6 +19,8 @@ import {
   Receipt,
   Table2,
   GraduationCap,
+  Swords,
+  Zap,
 } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -36,6 +38,12 @@ const navItems: NavItem[] = [
     href: "/dashboard",
     icon: LayoutDashboard,
     roles: ["admin"],
+  },
+  {
+    title: "Hızlı Giriş",
+    href: "/quick-entry",
+    icon: Zap,
+    roles: ["admin", "manager", "staff"],
   },
   {
     title: "Günlük Kayıt",
@@ -90,6 +98,12 @@ const navItems: NavItem[] = [
     href: "/settings",
     icon: Settings,
     roles: ["admin"],
+  },
+  {
+    title: "Vampir Köylü",
+    href: "/vampir-koylu",
+    icon: Swords,
+    roles: ["admin", "manager", "staff"],
   },
 ]
 

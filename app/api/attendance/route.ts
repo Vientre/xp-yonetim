@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const user = await getAuthUser()
-  if (!user || user.role === "staff") {
+  if (!user) {
     return NextResponse.json({ error: "Yetkisiz" }, { status: 403 })
   }
 

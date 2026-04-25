@@ -50,6 +50,10 @@ import {
   Pie,
   Cell,
   Legend,
+  LineChart,
+  Line,
+  Area,
+  AreaChart,
 } from "recharts"
 
 type Period = "today" | "week" | "month" | "year"
@@ -269,7 +273,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Grafikler */}
+      {/* Grafikler — satır 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
@@ -295,39 +299,136 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
+        {/* Gelir Kaynağı Dağılımı */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Gider Kategorileri — İşletme Bazlı</CardTitle>
+            <CardTitle className="text-base">Gelir Kaynağı Dağılımı</CardTitle>
           </CardHeader>
           <CardContent>
-            {loading ? <Skeleton className="h-48 w-full" /> : (
-              <div className="space-y-4">
-                {ALL_BUSINESSES.map((biz) => {
-                  const cats = data?.expenseByCategoryPerBusiness?.[biz.id] ?? []
-                  if (cats.length === 0) return null
-                  return (
-                    <div key={biz.id}>
-                      <p className="text-xs font-semibold text-muted-foreground mb-1.5">{biz.name}</p>
-                      <div className="space-y-1">
-                        {cats.slice(0, 5).map((cat, i) => (
-                          <div key={i} className="flex items-center gap-2 text-xs">
-                            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
-                            <span className="flex-1 truncate text-muted-foreground">{cat.name}</span>
-                            <span className="font-medium">{formatCurrency(cat.total)}</span>
-                          </div>
-                        ))}
+            {loading ? <Skeleton className="h-48 w-full" /> : (() => {
+              const cash = data?.summary.cashIncome ?? 0
+              const card = data?.summary.cardIncome ?? 0
+              const ticket = data?.summary.ticketIncome ?? 0
+              const total = cash + card + ticket
+              if (total === 0) return <p className="text-sm text-muted-foreground text-center py-16">Gelir kaydı yok</p>
+              const pieData = [
+                { name: "Nakit", value: cash, color: "#22c55e" },
+                { name: "Kart", value: card, color: "#3b82f6" },
+                { name: "Bilet", value: ticket, color: "#f59e0b" },
+              ].filter((d) => d.value > 0)
+              return (
+                <div className="flex items-center gap-4">
+                  <ResponsiveContainer width="55%" height={200}>
+                    <PieChart>
+                      <Pie data={pieData} dataKey="value" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3}>
+                        {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                      </Pie>
+                      <Tooltip formatter={(v: number) => formatCurrency(v)} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="flex-1 space-y-2">
+                    {pieData.map((d) => (
+                      <div key={d.name} className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: d.color }} />
+                          <span className="text-muted-foreground">{d.name}</span>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-medium text-xs">{formatCurrency(d.value)}</p>
+                          <p className="text-xs text-muted-foreground">{Math.round(d.value / total * 100)}%</p>
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
-                {ALL_BUSINESSES.every((b) => (data?.expenseByCategoryPerBusiness?.[b.id] ?? []).length === 0) && (
-                  <p className="text-sm text-muted-foreground text-center py-10">Gider kaydı yok</p>
-                )}
-              </div>
-            )}
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
           </CardContent>
         </Card>
       </div>
+
+      {/* Günlük Trend */}
+      {(data?.dailyTrend?.length ?? 0) > 1 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Günlük Gelir / Gider Trendi</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? <Skeleton className="h-56 w-full" /> : (
+              <ResponsiveContainer width="100%" height={230}>
+                <AreaChart data={data!.dailyTrend} margin={{ left: -10, right: 10 }}>
+                  <defs>
+                    <linearGradient id="incomeGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#22c55e" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="expenseGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 10 }}
+                    tickFormatter={(v: string) => {
+                      const d = new Date(v)
+                      return `${d.getDate().toString().padStart(2, "0")}/${(d.getMonth() + 1).toString().padStart(2, "0")}`
+                    }}
+                  />
+                  <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}K`} />
+                  <Tooltip
+                    formatter={(v: number, name: string) => [formatCurrency(v), name === "income" ? "Gelir" : "Gider"]}
+                    labelFormatter={(label: string) => {
+                      const d = new Date(label)
+                      return `${d.getDate().toString().padStart(2, "0")}.${(d.getMonth() + 1).toString().padStart(2, "0")}.${d.getFullYear()}`
+                    }}
+                  />
+                  <Legend formatter={(v) => v === "income" ? "Gelir" : "Gider"} />
+                  <Area type="monotone" dataKey="income" stroke="#22c55e" strokeWidth={2} fill="url(#incomeGrad)" dot={false} activeDot={{ r: 4 }} />
+                  <Area type="monotone" dataKey="expense" stroke="#ef4444" strokeWidth={2} fill="url(#expenseGrad)" dot={false} activeDot={{ r: 4 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Gider Kategorileri */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Gider Kategorileri — İşletme Bazlı</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? <Skeleton className="h-48 w-full" /> : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {ALL_BUSINESSES.map((biz) => {
+                const cats = data?.expenseByCategoryPerBusiness?.[biz.id] ?? []
+                if (cats.length === 0) return (
+                  <div key={biz.id}>
+                    <p className="text-xs font-semibold text-muted-foreground mb-1.5">{biz.name}</p>
+                    <p className="text-xs text-slate-400 italic">Gider yok</p>
+                  </div>
+                )
+                return (
+                  <div key={biz.id}>
+                    <p className="text-xs font-semibold text-muted-foreground mb-2">{biz.name}</p>
+                    <div className="space-y-1.5">
+                      {cats.slice(0, 6).map((cat, i) => (
+                        <div key={i} className="flex items-center gap-2 text-xs">
+                          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
+                          <span className="flex-1 truncate text-muted-foreground">{cat.name}</span>
+                          <span className="font-medium">{formatCurrency(cat.total)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
