@@ -10,6 +10,7 @@ import { TABS, getBusinessName } from "@/lib/constants"
 import { z } from "zod"
 
 const patchSchema = z.object({
+  date: z.string().min(1),
   employeeName: z.string().min(1),
   hoursWorked: z.number().min(0).max(24),
   mealAmount: z.number().min(0).default(0),
@@ -41,8 +42,7 @@ export async function PATCH(
   const parsed = patchSchema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
-  const { employeeName, hoursWorked, mealAmount, tipAmount, deductionAmount, mesai, notes } = parsed.data
-  const date = result.row[1]
+  const { date, employeeName, hoursWorked, mealAmount, tipAmount, deductionAmount, mesai, notes } = parsed.data
 
   await updateRowByIndex(TABS.ATTENDANCE, result.index, [
     id, date, employeeName, businessId,

@@ -202,6 +202,7 @@ export default function AttendancePage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          date: editEntry.date,
           employeeName: editEntry.employeeName,
           hoursWorked: editEntry.hoursWorked,
           mealAmount: editEntry.mealAmount,
@@ -427,6 +428,11 @@ export default function AttendancePage() {
                   </p>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Tarih</Label>
+                    <Input type="date" value={editEntry.date}
+                      onChange={(e) => setEditEntry({ ...editEntry, date: e.target.value })} />
+                  </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs">Personel Adı</Label>
                     <Input value={editEntry.employeeName}
