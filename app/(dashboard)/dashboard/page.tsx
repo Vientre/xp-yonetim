@@ -56,7 +56,34 @@ import {
   AreaChart,
 } from "recharts"
 
-type Period = "today" | "week" | "month" | "year"
+// period: "today" | "week" | "year" | "YYYY-MM" (specific month)
+type Period = string
+
+// Generate last N months as YYYY-MM strings
+function getRecentMonths(count = 24): { label: string; value: string }[] {
+  const months: { label: string; value: string }[] = []
+  const now = new Date()
+  const TR_MONTHS = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"]
+  for (let i = 0; i < count; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+    const label = i === 0 ? `Bu Ay (${TR_MONTHS[d.getMonth()]} ${d.getFullYear()})` : `${TR_MONTHS[d.getMonth()]} ${d.getFullYear()}`
+    months.push({ label, value })
+  }
+  return months
+}
+
+function getPeriodLabel(period: string): string {
+  const TR_MONTHS = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"]
+  if (period === "today") return "Bugün"
+  if (period === "week") return "Bu Hafta"
+  if (period === "year") return "Bu Yıl"
+  if (/^\d{4}-\d{2}$/.test(period)) {
+    const [y, m] = period.split("-")
+    return `${TR_MONTHS[parseInt(m) - 1]} ${y}`
+  }
+  return "Bu Ay"
+}
 
 interface BusinessSummary {
   id: string
@@ -96,13 +123,6 @@ interface DashboardData {
   period: string
 }
 
-const PERIOD_LABELS: Record<Period, string> = {
-  today: "Bugün",
-  week: "Bu Hafta",
-  month: "Bu Ay",
-  year: "Bu Yıl",
-}
-
 const ALL_BUSINESSES = [
   { id: "kim-sahne", name: "Kim Sahne" },
   { id: "xp-vr", name: "XP VR" },
@@ -110,22 +130,39 @@ const ALL_BUSINESSES = [
   { id: "xp-laser", name: "XP Laser" },
 ]
 
+const RECENT_MONTHS = getRecentMonths(24)
+// Default: current month as YYYY-MM
+const DEFAULT_PERIOD = RECENT_MONTHS[0].value
+
 export default function DashboardPage() {
-  const [period, setPeriod] = useState<Period>("month")
+  const [period, setPeriod] = useState<Period>(DEFAULT_PERIOD)
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
 
-  async function fetchData() {
+  function buildApiUrl(p: string) {
+    // Specific month: YYYY-MM
+    if (/^\d{4}-\d{2}$/.test(p)) {
+      return `/api/dashboard?period=month&month=${p}`
+    }
+    return `/api/dashboard?period=${p}`
+  }
+
+  async function fetchData(p = period) {
     setLoading(true)
     try {
-      const res = await fetch(`/api/dashboard?period=${period}`)
+      const res = await fetch(buildApiUrl(p))
       if (res.ok) setData(await res.json())
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => { fetchData() }, [period])
+  function handlePeriodChange(p: string) {
+    setPeriod(p)
+    fetchData(p)
+  }
+
+  useEffect(() => { fetchData() }, [])
 
   // Merge businessSummary with all businesses (show 0 for missing ones)
   const businessRows: BusinessSummary[] = ALL_BUSINESSES.map((b) => {
@@ -143,21 +180,27 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{PERIOD_LABELS[period]} için özet görünüm</p>
+          <p className="text-sm text-muted-foreground mt-0.5">{getPeriodLabel(period)} için özet görünüm</p>
         </div>
         <div className="flex items-center gap-2">
-          <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
-            <SelectTrigger className="w-36">
-              <SelectValue />
+          <Select value={period} onValueChange={handlePeriodChange}>
+            <SelectTrigger className="w-52">
+              <SelectValue placeholder="Dönem seç" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="max-h-80">
               <SelectItem value="today">Bugün</SelectItem>
               <SelectItem value="week">Bu Hafta</SelectItem>
-              <SelectItem value="month">Bu Ay</SelectItem>
               <SelectItem value="year">Bu Yıl</SelectItem>
+              <div className="my-1 border-t" />
+              <p className="px-2 py-1 text-xs font-semibold text-muted-foreground">Aya Göre</p>
+              {RECENT_MONTHS.map((m) => (
+                <SelectItem key={m.value} value={m.value}>
+                  {m.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" size="icon" onClick={fetchData} disabled={loading}>
+          <Button variant="outline" size="icon" onClick={() => fetchData()} disabled={loading}>
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </Button>
         </div>

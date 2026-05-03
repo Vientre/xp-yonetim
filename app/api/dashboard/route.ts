@@ -16,33 +16,45 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Sadece yöneticiler görebilir" }, { status: 403 })
   }
 
-  const { searchParams } = new URL(req.url)
+  const { searchParams } = req.nextUrl
   const period = searchParams.get("period") ?? "month"
   const businessId = searchParams.get("businessId")
   const monthParam = searchParams.get("month") // YYYY-MM for specific month filter
 
   // Calculate date range
   const now = new Date()
+  const todayStr = now.toISOString().split("T")[0]
   let fromDate: string
-  const toDate = now.toISOString().split("T")[0]
+  let toDate: string
 
   switch (period) {
     case "today":
-      fromDate = toDate
+      fromDate = todayStr
+      toDate = todayStr
       break
     case "week": {
       const d = new Date(now)
       d.setDate(now.getDate() - 6)
       fromDate = d.toISOString().split("T")[0]
+      toDate = todayStr
       break
     }
     case "year":
       fromDate = `${now.getFullYear()}-01-01`
+      toDate = todayStr
       break
-    default: // month
-      fromDate = monthParam
-        ? `${monthParam}-01`
-        : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`
+    default: {
+      // "month" + optional monthParam = specific month
+      const target = monthParam ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+      const [y, m] = target.split("-").map(Number)
+      fromDate = `${target}-01`
+      // Last day of the selected month
+      const lastDay = new Date(y, m, 0) // day 0 of next month = last day of this month
+      const lastDayStr = lastDay.toISOString().split("T")[0]
+      // Cap toDate at today so we don't show "future" data for current month
+      toDate = lastDayStr < todayStr ? lastDayStr : todayStr
+      break
+    }
   }
 
   // Calculate previous period date range for comparison
