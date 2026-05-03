@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
-import { BarChart3, Download, Calendar, RefreshCw } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Download, RefreshCw, TrendingUp, TrendingDown, Wallet, Building2 } from "lucide-react"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import {
   BarChart,
@@ -26,6 +27,22 @@ import { format, startOfMonth, endOfMonth, subMonths } from "date-fns"
 
 interface Business { id: string; name: string }
 
+interface BizDetail {
+  id: string
+  name: string
+  income: { nakit: number; kart: number; bilet: number; total: number }
+  expense: { total: number; byCategory: { name: string; color: string; total: number }[] }
+  net: number
+  dailyRows: { date: string; nakit: number; kart: number; bilet: number; gelir: number; gider: number }[]
+}
+
+interface BizDetailResponse {
+  businesses: BizDetail[]
+  grand: { gelir: number; gider: number; net: number; nakit: number; kart: number; bilet: number }
+  from: string
+  to: string
+}
+
 export default function ReportsPage() {
   const [businesses, setBusinesses] = useState<Business[]>([{ id: "all", name: "Tüm İşletmeler" }])
   const [businessId, setBusinessId] = useState("all")
@@ -34,7 +51,9 @@ export default function ReportsPage() {
   const [data, setData] = useState<any>(null)
   const [payrollData, setPayrollData] = useState<any>(null)
   const [mealData, setMealData] = useState<any>(null)
+  const [bizDetail, setBizDetail] = useState<BizDetailResponse | null>(null)
   const [loading, setLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState("business")
 
   useEffect(() => {
     fetch("/api/businesses").then((r) => r.json()).then((biz) => {
@@ -49,14 +68,16 @@ export default function ReportsPage() {
     if (businessId && businessId !== "all") params.set("businessId", businessId)
 
     try {
-      const [income, payroll, meals] = await Promise.all([
+      const [income, payroll, meals, detail] = await Promise.all([
         fetch(`/api/reports?type=income&${params}`).then((r) => r.json()),
         fetch(`/api/reports?type=payroll&${params}`).then((r) => r.json()),
         fetch(`/api/reports?type=meals&${params}`).then((r) => r.json()),
+        fetch(`/api/reports/business-detail?from=${from}&to=${to}`).then((r) => r.json()),
       ])
       setData(income)
       setPayrollData(payroll)
       setMealData(meals)
+      setBizDetail(detail)
     } finally {
       setLoading(false)
     }
@@ -189,12 +210,217 @@ export default function ReportsPage() {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="income">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
+          <TabsTrigger value="business">İşletme Bazlı</TabsTrigger>
           <TabsTrigger value="income">Gelir-Gider</TabsTrigger>
           <TabsTrigger value="payroll">Personel Ödemeleri</TabsTrigger>
           <TabsTrigger value="meals">Yemek Özeti</TabsTrigger>
         </TabsList>
+
+        {/* İŞLETME BAZLI DETAY */}
+        <TabsContent value="business" className="space-y-6 mt-4">
+          {loading ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {[0,1,2,3].map(i => <Skeleton key={i} className="h-64 w-full" />)}
+            </div>
+          ) : (
+            <>
+              {/* Genel Toplam Bant */}
+              {bizDetail?.grand && (
+                <div className="grid grid-cols-3 gap-4">
+                  <Card>
+                    <CardContent className="p-4 flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+                        <TrendingUp className="h-4 w-4 text-green-600" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Toplam Gelir</p>
+                        <p className="text-xl font-bold text-green-600">{formatCurrency(bizDetail.grand.gelir)}</p>
+                        <div className="flex gap-2 mt-0.5 text-xs text-muted-foreground">
+                          <span>💵 {formatCurrency(bizDetail.grand.nakit)}</span>
+                          <span>💳 {formatCurrency(bizDetail.grand.kart)}</span>
+                          <span>🎟 {formatCurrency(bizDetail.grand.bilet)}</span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4 flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
+                        <TrendingDown className="h-4 w-4 text-red-600" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Toplam Gider</p>
+                        <p className="text-xl font-bold text-red-600">{formatCurrency(bizDetail.grand.gider)}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4 flex items-center gap-3">
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${bizDetail.grand.net >= 0 ? "bg-blue-100" : "bg-red-100"}`}>
+                        <Wallet className={`h-4 w-4 ${bizDetail.grand.net >= 0 ? "text-blue-600" : "text-red-600"}`} />
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Net</p>
+                        <p className={`text-xl font-bold ${bizDetail.grand.net >= 0 ? "text-blue-600" : "text-red-600"}`}>{formatCurrency(bizDetail.grand.net)}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+
+              {/* 4 İşletme Kartı */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {(bizDetail?.businesses ?? []).map((biz) => (
+                  <Card key={biz.id} className="overflow-hidden">
+                    <CardHeader className="pb-3 bg-gray-50 border-b">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <Building2 className="h-4 w-4 text-muted-foreground" />
+                          {biz.name}
+                        </CardTitle>
+                        <Badge
+                          variant="outline"
+                          className={biz.net >= 0 ? "border-green-300 text-green-700 bg-green-50" : "border-red-300 text-red-700 bg-red-50"}
+                        >
+                          Net: {formatCurrency(biz.net)}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      {/* Gelir Bölümü */}
+                      <div className="p-4 border-b">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Gelir</p>
+                        <div className="grid grid-cols-4 gap-2">
+                          {[
+                            { label: "Nakit", value: biz.income.nakit, color: "text-green-700", bg: "bg-green-50" },
+                            { label: "Kart",  value: biz.income.kart,  color: "text-blue-700",  bg: "bg-blue-50"  },
+                            { label: "Bilet", value: biz.income.bilet, color: "text-amber-700", bg: "bg-amber-50" },
+                            { label: "Toplam",value: biz.income.total, color: "text-green-800", bg: "bg-green-100" },
+                          ].map((item) => (
+                            <div key={item.label} className={`rounded-lg p-2.5 ${item.bg} text-center`}>
+                              <p className="text-xs text-muted-foreground">{item.label}</p>
+                              <p className={`text-sm font-bold ${item.color} mt-0.5`}>{formatCurrency(item.value)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Gider Kalemleri */}
+                      <div className="p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Gider Kalemleri</p>
+                          <span className="text-sm font-bold text-red-600">{formatCurrency(biz.expense.total)}</span>
+                        </div>
+                        {biz.expense.byCategory.length === 0 ? (
+                          <p className="text-xs text-muted-foreground italic text-center py-3">Gider kaydı yok</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {biz.expense.byCategory.map((cat) => {
+                              const pct = biz.expense.total > 0
+                                ? Math.round((cat.total / biz.expense.total) * 100)
+                                : 0
+                              return (
+                                <div key={cat.name}>
+                                  <div className="flex items-center justify-between text-xs mb-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
+                                      <span className="text-gray-700">{cat.name}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-muted-foreground">{pct}%</span>
+                                      <span className="font-semibold">{formatCurrency(cat.total)}</span>
+                                    </div>
+                                  </div>
+                                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full rounded-full transition-all"
+                                      style={{ width: `${pct}%`, backgroundColor: cat.color }}
+                                    />
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Günlük Kapanışlar — daraltılabilir tablo */}
+                      {biz.dailyRows.length > 0 && (
+                        <details className="border-t">
+                          <summary className="px-4 py-2.5 text-xs font-semibold text-muted-foreground cursor-pointer hover:bg-gray-50 select-none">
+                            Günlük Kapanışlar ({biz.dailyRows.length} kayıt)
+                          </summary>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="border-b bg-gray-50">
+                                  <th className="text-left px-4 py-2 font-medium text-muted-foreground">Tarih</th>
+                                  <th className="text-right px-4 py-2 font-medium text-muted-foreground">Nakit</th>
+                                  <th className="text-right px-4 py-2 font-medium text-muted-foreground">Kart</th>
+                                  <th className="text-right px-4 py-2 font-medium text-muted-foreground">Bilet</th>
+                                  <th className="text-right px-4 py-2 font-medium text-muted-foreground">Gelir</th>
+                                  <th className="text-right px-4 py-2 font-medium text-muted-foreground">Gider</th>
+                                  <th className="text-right px-4 py-2 font-medium text-muted-foreground">Net</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {biz.dailyRows.map((row) => (
+                                  <tr key={row.date} className="border-b last:border-0 hover:bg-gray-50">
+                                    <td className="px-4 py-2">{formatDate(row.date)}</td>
+                                    <td className="px-4 py-2 text-right">{formatCurrency(row.nakit)}</td>
+                                    <td className="px-4 py-2 text-right">{formatCurrency(row.kart)}</td>
+                                    <td className="px-4 py-2 text-right">{formatCurrency(row.bilet)}</td>
+                                    <td className="px-4 py-2 text-right text-green-700 font-medium">{formatCurrency(row.gelir)}</td>
+                                    <td className="px-4 py-2 text-right text-red-600">{formatCurrency(row.gider)}</td>
+                                    <td className={`px-4 py-2 text-right font-semibold ${(row.gelir - row.gider) >= 0 ? "text-blue-600" : "text-red-600"}`}>
+                                      {formatCurrency(row.gelir - row.gider)}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                              <tfoot>
+                                <tr className="bg-gray-50 font-semibold border-t">
+                                  <td className="px-4 py-2">Toplam</td>
+                                  <td className="px-4 py-2 text-right">{formatCurrency(biz.income.nakit)}</td>
+                                  <td className="px-4 py-2 text-right">{formatCurrency(biz.income.kart)}</td>
+                                  <td className="px-4 py-2 text-right">{formatCurrency(biz.income.bilet)}</td>
+                                  <td className="px-4 py-2 text-right text-green-700">{formatCurrency(biz.income.total)}</td>
+                                  <td className="px-4 py-2 text-right text-red-600">{formatCurrency(biz.expense.total)}</td>
+                                  <td className={`px-4 py-2 text-right ${biz.net >= 0 ? "text-blue-600" : "text-red-600"}`}>{formatCurrency(biz.net)}</td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                        </details>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* CSV Export */}
+              <div className="flex justify-end">
+                <Button variant="outline" size="sm" onClick={() => {
+                  if (!bizDetail) return
+                  let csv = "İşletme,Nakit Gelir,Kart Gelir,Bilet Gelir,Toplam Gelir,Toplam Gider,Net\n"
+                  csv += bizDetail.businesses.map(b =>
+                    `${b.name},${b.income.nakit},${b.income.kart},${b.income.bilet},${b.income.total},${b.expense.total},${b.net}`
+                  ).join("\n")
+                  csv += `\nTOPLAM,${bizDetail.grand.nakit},${bizDetail.grand.kart},${bizDetail.grand.bilet},${bizDetail.grand.gelir},${bizDetail.grand.gider},${bizDetail.grand.net}`
+                  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" })
+                  const url = URL.createObjectURL(blob)
+                  const a = document.createElement("a")
+                  a.href = url; a.download = `isletme_detay_${from}_${to}.csv`; a.click()
+                  URL.revokeObjectURL(url)
+                }}>
+                  <Download className="h-3.5 w-3.5 mr-1" /> CSV İndir
+                </Button>
+              </div>
+            </>
+          )}
+        </TabsContent>
 
         {/* GELİR GİDER */}
         <TabsContent value="income" className="space-y-4 mt-4">
