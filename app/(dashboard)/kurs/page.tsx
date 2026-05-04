@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Plus, Trash2, Search, Printer, GraduationCap, ChevronLeft, ChevronRight } from "lucide-react"
+import { Plus, Trash2, Search, Printer, GraduationCap, ChevronLeft, ChevronRight, Receipt, AlertTriangle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
@@ -18,6 +18,24 @@ type Student = {
   createdAt: string
   sinif: string
   payments: Record<string, Payment>
+}
+
+type Expense = {
+  id: string
+  tarih: string
+  detay: string
+  tutar: number
+  olusturmaTarihi: string
+}
+
+// Onay dialogu için bekleyen toggle
+type PendingToggle = {
+  studentId: string
+  studentName: string
+  month: string
+  monthLabel: string
+  current: Payment | undefined
+  newPaid: boolean
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -53,6 +71,60 @@ function getMonthRange(startYear: number, startMonth: number, count: number) {
   return result
 }
 
+// ─── Onay Dialogu ─────────────────────────────────────────────────────────────
+
+function ConfirmDialog({
+  pending,
+  onConfirm,
+  onCancel,
+}: {
+  pending: PendingToggle
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl p-6 mx-4 w-full max-w-sm animate-in fade-in zoom-in-95 duration-150">
+        <div className="flex items-start gap-3 mb-4">
+          <div className={cn(
+            "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
+            pending.newPaid ? "bg-emerald-100" : "bg-red-100"
+          )}>
+            <AlertTriangle className={cn("w-5 h-5", pending.newPaid ? "text-emerald-600" : "text-red-600")} />
+          </div>
+          <div>
+            <h3 className="font-semibold text-slate-900 text-base">Emin misiniz?</h3>
+            <p className="text-sm text-slate-500 mt-0.5">
+              <span className="font-medium text-slate-700">{pending.studentName}</span> —{" "}
+              <span className="font-medium">{pending.monthLabel}</span>
+            </p>
+          </div>
+          <button onClick={onCancel} className="ml-auto p-1 rounded-md hover:bg-slate-100 text-slate-400">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <p className="text-sm text-slate-600 mb-5 pl-13">
+          {pending.newPaid
+            ? "Bu ay ödeme yapıldı olarak işaretlenecek."
+            : "Bu ay ödeme ödenmedi olarak geri alınacak."}
+        </p>
+
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" size="sm" onClick={onCancel}>İptal</Button>
+          <Button
+            size="sm"
+            className={cn(pending.newPaid ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700")}
+            onClick={onConfirm}
+          >
+            {pending.newPaid ? "✓ Ödendi Yap" : "✗ Geri Al"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function KursPage() {
@@ -63,25 +135,40 @@ export default function KursPage() {
   })
 
   const [students, setStudents] = useState<Student[]>([])
+  const [expenses, setExpenses] = useState<Expense[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [selectedSinif, setSelectedSinif] = useState("")
 
+  // Öğrenci ekleme
   const [newName, setNewName] = useState("")
   const [newFee, setNewFee] = useState("")
   const [newSinif, setNewSinif] = useState("")
   const [adding, setAdding] = useState(false)
+
+  // Gider ekleme
+  const [giderTarih, setGiderTarih] = useState(todayISO())
+  const [giderDetay, setGiderDetay] = useState("")
+  const [giderTutar, setGiderTutar] = useState("")
+  const [addingGider, setAddingGider] = useState(false)
+  const [deletingGider, setDeletingGider] = useState<string | null>(null)
+
   const [toggling, setToggling] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
 
+  // Onay dialogu
+  const [pendingToggle, setPendingToggle] = useState<PendingToggle | null>(null)
+
   const months = getMonthRange(rangeStart.year, rangeStart.month, 3)
 
-  const fetchStudents = useCallback(async () => {
+  const fetchAll = useCallback(async () => {
     setLoading(true)
     try {
       const res = await fetch("/api/kurs")
       if (!res.ok) throw new Error()
-      setStudents(await res.json())
+      const json = await res.json()
+      setStudents(json.students ?? [])
+      setExpenses(json.expenses ?? [])
     } catch {
       toast.error("Veriler yüklenemedi")
     } finally {
@@ -89,7 +176,7 @@ export default function KursPage() {
     }
   }, [])
 
-  useEffect(() => { fetchStudents() }, [fetchStudents])
+  useEffect(() => { fetchAll() }, [fetchAll])
 
   function prevPeriod() {
     setRangeStart(({ year, month }) => {
@@ -111,6 +198,7 @@ export default function KursPage() {
     return Array.from(set).sort()
   }, [students])
 
+  // ── Öğrenci ekle ──────────────────────────────────────────────────────────
   async function addStudent(e: React.FormEvent) {
     e.preventDefault()
     const name = newName.trim()
@@ -137,14 +225,27 @@ export default function KursPage() {
     }
   }
 
-  async function togglePayment(studentId: string, month: string, current: Payment | undefined) {
-    const currentPaid = current?.paid ?? false
-    const newPaid = !currentPaid
+  // ── Ödeme toggle — onay isteği ────────────────────────────────────────────
+  function requestToggle(student: Student, mo: { key: string; label: string }, payment: Payment | undefined) {
+    const newPaid = !(payment?.paid ?? false)
+    setPendingToggle({
+      studentId: student.id,
+      studentName: student.name,
+      month: mo.key,
+      monthLabel: mo.label,
+      current: payment,
+      newPaid,
+    })
+  }
+
+  async function confirmToggle() {
+    if (!pendingToggle) return
+    const { studentId, month, current, newPaid } = pendingToggle
     const newDate = newPaid ? todayISO() : ""
     const key = `${studentId}-${month}`
+    setPendingToggle(null)
     setToggling(key)
 
-    // Optimistic
     setStudents((prev) => prev.map((s) =>
       s.id === studentId
         ? { ...s, payments: { ...s.payments, [month]: { paid: newPaid, date: newDate } } }
@@ -158,8 +259,8 @@ export default function KursPage() {
         body: JSON.stringify({ action: "toggle", studentId, month, paid: newPaid, date: newDate }),
       })
       if (!res.ok) throw new Error()
+      toast.success(newPaid ? "Ödeme kaydedildi" : "Ödeme geri alındı")
     } catch {
-      // Revert
       setStudents((prev) => prev.map((s) =>
         s.id === studentId
           ? { ...s, payments: { ...s.payments, [month]: current ?? { paid: false, date: "" } } }
@@ -171,6 +272,7 @@ export default function KursPage() {
     }
   }
 
+  // ── Öğrenci sil ───────────────────────────────────────────────────────────
   async function deleteStudent(student: Student) {
     if (!confirm(`"${student.name}" silinsin mi?`)) return
     setDeleting(student.id)
@@ -183,6 +285,53 @@ export default function KursPage() {
       toast.error("Silinemedi")
     } finally {
       setDeleting(null)
+    }
+  }
+
+  // ── Gider ekle ────────────────────────────────────────────────────────────
+  async function addExpense(e: React.FormEvent) {
+    e.preventDefault()
+    const detay = giderDetay.trim()
+    const tutar = parseFloat(giderTutar)
+    if (!detay) { toast.error("Detay girin"); return }
+    if (!tutar || tutar <= 0) { toast.error("Geçerli bir tutar girin"); return }
+    if (!giderTarih) { toast.error("Tarih seçin"); return }
+    setAddingGider(true)
+    try {
+      const res = await fetch("/api/kurs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "addExpense", tarih: giderTarih, detay, tutar }),
+      })
+      if (!res.ok) throw new Error()
+      const newExp: Expense = await res.json()
+      setExpenses((prev) => [newExp, ...prev].sort((a, b) => b.tarih.localeCompare(a.tarih)))
+      setGiderDetay(""); setGiderTutar("")
+      toast.success("Gider eklendi")
+    } catch {
+      toast.error("Eklenemedi")
+    } finally {
+      setAddingGider(false)
+    }
+  }
+
+  // ── Gider sil ─────────────────────────────────────────────────────────────
+  async function deleteExpense(id: string) {
+    if (!confirm("Bu gider silinsin mi?")) return
+    setDeletingGider(id)
+    try {
+      const res = await fetch("/api/kurs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "deleteExpense", id }),
+      })
+      if (!res.ok) throw new Error()
+      setExpenses((prev) => prev.filter((e) => e.id !== id))
+      toast.success("Gider silindi")
+    } catch {
+      toast.error("Silinemedi")
+    } finally {
+      setDeletingGider(null)
     }
   }
 
@@ -200,8 +349,19 @@ export default function KursPage() {
     }
   }
 
+  const totalExpenses = expenses.reduce((s, e) => s + e.tutar, 0)
+
   return (
     <div className="p-6 space-y-5">
+
+      {/* Onay Dialogu */}
+      {pendingToggle && (
+        <ConfirmDialog
+          pending={pendingToggle}
+          onConfirm={confirmToggle}
+          onCancel={() => setPendingToggle(null)}
+        />
+      )}
 
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -220,8 +380,8 @@ export default function KursPage() {
         </Button>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* Özet kartlar */}
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
             {selectedSinif ? `${selectedSinif} Öğrencisi` : "Toplam Öğrenci"}
@@ -237,63 +397,126 @@ export default function KursPage() {
           <p className="text-xs font-medium text-red-700 uppercase tracking-wide">Eksik Ödeme</p>
           <p className="text-3xl font-bold text-red-700 mt-1">{formatTL(totalMissing)}</p>
         </div>
+        <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 shadow-sm">
+          <p className="text-xs font-medium text-orange-700 uppercase tracking-wide">Toplam Gider</p>
+          <p className="text-3xl font-bold text-orange-700 mt-1">{formatTL(totalExpenses)}</p>
+          <p className="text-xs text-orange-500 mt-0.5">{expenses.length} kalem</p>
+        </div>
       </div>
 
-      {/* Add student form */}
+      {/* Yeni öğrenci formu */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm print:hidden">
         <h2 className="text-sm font-semibold text-slate-700 mb-3">Yeni Öğrenci Ekle</h2>
         <form onSubmit={addStudent} className="flex gap-2 flex-wrap">
-          <Input
-            placeholder="Ad Soyad"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            className="flex-1 min-w-[180px]"
-          />
-          <Input
-            placeholder="Sınıf (örn: 1A, 2B)"
-            value={newSinif}
-            onChange={(e) => setNewSinif(e.target.value)}
-            className="w-36"
-          />
-          <Input
-            type="number"
-            placeholder="Aylık Ücret (₺)"
-            value={newFee}
-            onChange={(e) => setNewFee(e.target.value)}
-            min="0"
-            className="w-44"
-          />
+          <Input placeholder="Ad Soyad" value={newName} onChange={(e) => setNewName(e.target.value)} className="flex-1 min-w-[180px]" />
+          <Input placeholder="Sınıf (örn: 1A)" value={newSinif} onChange={(e) => setNewSinif(e.target.value)} className="w-32" />
+          <Input type="number" placeholder="Aylık Ücret (₺)" value={newFee} onChange={(e) => setNewFee(e.target.value)} min="0" className="w-44" />
           <Button type="submit" disabled={adding} className="gap-2">
             <Plus className="w-4 h-4" />
-            {adding ? "Ekleniyor..." : "Ekle"}
+            {adding ? "Ekleniyor…" : "Ekle"}
           </Button>
         </form>
       </div>
 
-      {/* Filters */}
+      {/* ── GİDER BÖLÜMÜ ─────────────────────────────────────────────────── */}
+      <div className="bg-white border border-orange-200 rounded-xl shadow-sm print:hidden overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 bg-orange-50 border-b border-orange-100">
+          <Receipt className="w-4 h-4 text-orange-600" />
+          <h2 className="text-sm font-semibold text-orange-800">Kurs Giderleri</h2>
+          <span className="ml-auto text-sm font-bold text-orange-700">{formatTL(totalExpenses)}</span>
+        </div>
+
+        {/* Gider ekleme formu */}
+        <form onSubmit={addExpense} className="flex gap-2 flex-wrap p-4 border-b border-slate-100">
+          <Input
+            type="date"
+            value={giderTarih}
+            onChange={(e) => setGiderTarih(e.target.value)}
+            className="w-40"
+          />
+          <Input
+            placeholder="Detay (örn: Kira, Malzeme…)"
+            value={giderDetay}
+            onChange={(e) => setGiderDetay(e.target.value)}
+            className="flex-1 min-w-[200px]"
+          />
+          <Input
+            type="number"
+            placeholder="Tutar (₺)"
+            value={giderTutar}
+            onChange={(e) => setGiderTutar(e.target.value)}
+            min="0"
+            step="0.01"
+            className="w-36"
+          />
+          <Button type="submit" disabled={addingGider} variant="outline" className="gap-2 border-orange-300 text-orange-700 hover:bg-orange-50">
+            <Plus className="w-4 h-4" />
+            {addingGider ? "Ekleniyor…" : "Gider Ekle"}
+          </Button>
+        </form>
+
+        {/* Gider listesi */}
+        {expenses.length === 0 ? (
+          <p className="text-sm text-slate-400 italic text-center py-6">Henüz gider kaydı yok.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-xs">
+                  <th className="text-left px-4 py-2 font-medium text-slate-500">Tarih</th>
+                  <th className="text-left px-4 py-2 font-medium text-slate-500">Detay</th>
+                  <th className="text-right px-4 py-2 font-medium text-slate-500">Tutar</th>
+                  <th className="w-10 px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {expenses.map((exp) => (
+                  <tr key={exp.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                    <td className="px-4 py-2.5 text-slate-600 tabular-nums whitespace-nowrap">{formatDate(exp.tarih)}</td>
+                    <td className="px-4 py-2.5 text-slate-800">{exp.detay}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-orange-700 tabular-nums">{formatTL(exp.tutar)}</td>
+                    <td className="px-3 py-2.5">
+                      <button
+                        onClick={() => deleteExpense(exp.id)}
+                        disabled={deletingGider === exp.id}
+                        className="p-1.5 rounded-md text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-200 bg-slate-50">
+                  <td colSpan={2} className="px-4 py-2.5 font-semibold text-slate-700 text-xs">TOPLAM</td>
+                  <td className="px-4 py-2.5 text-right font-bold text-orange-700 tabular-nums">{formatTL(totalExpenses)}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Filtreler */}
       <div className="flex flex-wrap items-center gap-3 print:hidden">
         {sinifList.length > 0 && (
           <div className="flex gap-1 bg-slate-100 p-1 rounded-lg flex-wrap">
             <button
               onClick={() => setSelectedSinif("")}
-              className={cn(
-                "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+              className={cn("px-3 py-1.5 rounded-md text-xs font-medium transition-all",
                 selectedSinif === "" ? "bg-white shadow text-slate-900" : "text-slate-500 hover:text-slate-700"
               )}
-            >
-              Tümü
-            </button>
+            >Tümü</button>
             {sinifList.map((sinif) => (
               <button
                 key={sinif}
                 onClick={() => setSelectedSinif(sinif)}
-                className={cn(
-                  "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                className={cn("px-3 py-1.5 rounded-md text-xs font-medium transition-all",
                   selectedSinif === sinif ? "bg-white shadow text-slate-900" : "text-slate-500 hover:text-slate-700"
                 )}
-              >
-                {sinif}
-              </button>
+              >{sinif}</button>
             ))}
           </div>
         )}
@@ -313,7 +536,7 @@ export default function KursPage() {
         <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <Input
-            placeholder="Öğrenci ara..."
+            placeholder="Öğrenci ara…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -321,7 +544,7 @@ export default function KursPage() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Tablo */}
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center h-40 text-slate-400 text-sm">Yükleniyor…</div>
@@ -370,6 +593,7 @@ export default function KursPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-right text-slate-600 tabular-nums">{formatTL(student.monthlyFee)}</td>
+
                         {months.map((mo) => {
                           const payment = student.payments[mo.key]
                           const paid = payment?.paid ?? false
@@ -379,8 +603,9 @@ export default function KursPage() {
                           return (
                             <td key={mo.key} className="px-4 py-3 text-center">
                               <button
-                                onClick={() => togglePayment(student.id, mo.key, payment)}
+                                onClick={() => requestToggle(student, mo, payment)}
                                 disabled={isToggling}
+                                title={paid ? `Ödeme tarihi: ${formatDate(payDate)} — Geri almak için tıkla` : "Ödendi olarak işaretle"}
                                 className={cn(
                                   "inline-flex flex-col items-center justify-center px-3 py-1.5 rounded-lg text-xs font-semibold transition-all min-w-[100px]",
                                   paid
@@ -399,6 +624,7 @@ export default function KursPage() {
                             </td>
                           )
                         })}
+
                         <td className="px-4 py-3 text-right font-semibold text-emerald-700 tabular-nums">
                           {totalPaid > 0 ? formatTL(totalPaid) : <span className="text-slate-300">—</span>}
                         </td>
@@ -434,12 +660,8 @@ export default function KursPage() {
                         </td>
                       )
                     })}
-                    <td className="px-4 py-3 text-right font-bold text-emerald-700 tabular-nums">
-                      {formatTL(totalCollected)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-red-700 tabular-nums">
-                      {formatTL(totalMissing)}
-                    </td>
+                    <td className="px-4 py-3 text-right font-bold text-emerald-700 tabular-nums">{formatTL(totalCollected)}</td>
+                    <td className="px-4 py-3 text-right font-bold text-red-700 tabular-nums">{formatTL(totalMissing)}</td>
                     <td className="print:hidden" />
                   </tr>
                 </tfoot>

@@ -1,18 +1,14 @@
 /**
  * Kurs Ödeme Takip API
  *
- * Google Sheet: "KursOgrenci" tab
- * Columns: id | ad | aylikUcret | olusturmaTarihi | sinif
- * Index:   0  |  1 |     2      |       3         |   4
- *
- * Google Sheet: "KursOdeme" tab
- * Columns: id | ogrenciId | ay (YYYY-MM) | odendi | tarih
- * Index:   0  |     1     |      2       |    3   |   4
+ * KursOgrenci tab — id | ad | aylikUcret | olusturmaTarihi | sinif
+ * KursOdeme tab   — id | ogrenciId | ay (YYYY-MM) | odendi | tarih
+ * KursGider tab   — id | tarih (YYYY-MM-DD) | detay | tutar | olusturmaTarihi
  */
 
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthUser } from "@/lib/auth-utils"
-import { getRows, appendRow, updateRowByIndex, generateId } from "@/lib/sheets"
+import { getRows, appendRow, updateRowByIndex, deleteRowByIndex, generateId } from "@/lib/sheets"
 import { TABS } from "@/lib/constants"
 import { z } from "zod"
 
@@ -27,9 +23,10 @@ export async function GET() {
   const { error } = await requireAdmin()
   if (error) return error
 
-  const [studentRows, paymentRows] = await Promise.all([
+  const [studentRows, paymentRows, expenseRows] = await Promise.all([
     getRows(TABS.KURS_OGRENCI),
     getRows(TABS.KURS_ODEME),
+    getRows(TABS.KURS_GIDER),
   ])
 
   const students = studentRows.map((row) => {
@@ -37,10 +34,7 @@ export async function GET() {
     const payments: Record<string, { paid: boolean; date: string }> = {}
     for (const pr of paymentRows) {
       if (pr[1] === id) {
-        payments[pr[2]] = {
-          paid: pr[3] === "true",
-          date: pr[4] ?? "",
-        }
+        payments[pr[2]] = { paid: pr[3] === "true", date: pr[4] ?? "" }
       }
     }
     return {
@@ -53,10 +47,20 @@ export async function GET() {
     }
   })
 
-  return NextResponse.json(students)
+  const expenses = expenseRows
+    .map((row) => ({
+      id: row[0] ?? "",
+      tarih: row[1] ?? "",
+      detay: row[2] ?? "",
+      tutar: parseFloat(row[3] || "0"),
+      olusturmaTarihi: row[4] ?? "",
+    }))
+    .sort((a, b) => b.tarih.localeCompare(a.tarih))
+
+  return NextResponse.json({ students, expenses })
 }
 
-const addSchema = z.object({
+const addStudentSchema = z.object({
   action: z.literal("add"),
   name: z.string().min(1),
   monthlyFee: z.number().positive(),
@@ -68,7 +72,19 @@ const toggleSchema = z.object({
   studentId: z.string().min(1),
   month: z.string().regex(/^\d{4}-\d{2}$/),
   paid: z.boolean(),
-  date: z.string().optional().default(""), // ISO date string when paid, "" when unpaid
+  date: z.string().optional().default(""),
+})
+
+const addExpenseSchema = z.object({
+  action: z.literal("addExpense"),
+  tarih: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  detay: z.string().min(1),
+  tutar: z.number().positive(),
+})
+
+const deleteExpenseSchema = z.object({
+  action: z.literal("deleteExpense"),
+  id: z.string().min(1),
 })
 
 export async function POST(req: NextRequest) {
@@ -77,9 +93,9 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json()
 
-  // Add student
+  // ── Öğrenci ekle ──────────────────────────────────────────────────────────
   if (body.action === "add") {
-    const parsed = addSchema.safeParse(body)
+    const parsed = addStudentSchema.safeParse(body)
     if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
     const { name, monthlyFee, sinif } = parsed.data
     const id = generateId()
@@ -88,7 +104,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ id, name, monthlyFee, createdAt, sinif, payments: {} }, { status: 201 })
   }
 
-  // Toggle payment
+  // ── Ödeme toggle ─────────────────────────────────────────────────────────
   if (body.action === "toggle") {
     const parsed = toggleSchema.safeParse(body)
     if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
@@ -96,7 +112,6 @@ export async function POST(req: NextRequest) {
 
     const paymentRows = await getRows(TABS.KURS_ODEME)
     const existingIndex = paymentRows.findIndex((r) => r[1] === studentId && r[2] === month)
-
     const paymentDate = paid ? (date || new Date().toISOString().split("T")[0]) : ""
 
     if (existingIndex !== -1) {
@@ -109,6 +124,30 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ ok: true, studentId, month, paid, date: paymentDate })
+  }
+
+  // ── Gider ekle ────────────────────────────────────────────────────────────
+  if (body.action === "addExpense") {
+    const parsed = addExpenseSchema.safeParse(body)
+    if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    const { tarih, detay, tutar } = parsed.data
+    const id = generateId()
+    const olusturmaTarihi = new Date().toISOString()
+    await appendRow(TABS.KURS_GIDER, [id, tarih, detay, tutar, olusturmaTarihi])
+    return NextResponse.json({ id, tarih, detay, tutar, olusturmaTarihi }, { status: 201 })
+  }
+
+  // ── Gider sil ─────────────────────────────────────────────────────────────
+  if (body.action === "deleteExpense") {
+    const parsed = deleteExpenseSchema.safeParse(body)
+    if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    const { id } = parsed.data
+
+    const expenseRows = await getRows(TABS.KURS_GIDER)
+    const idx = expenseRows.findIndex((r) => r[0] === id)
+    if (idx === -1) return NextResponse.json({ error: "Bulunamadı" }, { status: 404 })
+    await deleteRowByIndex(TABS.KURS_GIDER, idx)
+    return NextResponse.json({ ok: true })
   }
 
   return NextResponse.json({ error: "Geçersiz action" }, { status: 400 })
