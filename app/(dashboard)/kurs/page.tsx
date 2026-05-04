@@ -381,7 +381,7 @@ export default function KursPage() {
       </div>
 
       {/* Özet kartlar */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
             {selectedSinif ? `${selectedSinif} Öğrencisi` : "Toplam Öğrenci"}
@@ -402,6 +402,19 @@ export default function KursPage() {
           <p className="text-3xl font-bold text-orange-700 mt-1">{formatTL(totalExpenses)}</p>
           <p className="text-xs text-orange-500 mt-0.5">{expenses.length} kalem</p>
         </div>
+        {(() => {
+          const net = totalCollected - totalExpenses
+          const isPositive = net >= 0
+          return (
+            <div className={`rounded-xl p-4 shadow-sm border ${isPositive ? "bg-blue-50 border-blue-100" : "bg-red-50 border-red-100"}`}>
+              <p className={`text-xs font-medium uppercase tracking-wide ${isPositive ? "text-blue-700" : "text-red-700"}`}>Net</p>
+              <p className={`text-3xl font-bold mt-1 ${isPositive ? "text-blue-700" : "text-red-700"}`}>{formatTL(net)}</p>
+              <p className={`text-xs mt-0.5 ${isPositive ? "text-blue-500" : "text-red-500"}`}>
+                {isPositive ? "Tahsilat − Gider" : "Zarar"}
+              </p>
+            </div>
+          )
+        })()}
       </div>
 
       {/* Yeni öğrenci formu */}
