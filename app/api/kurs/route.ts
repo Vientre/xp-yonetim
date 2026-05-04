@@ -26,7 +26,8 @@ export async function GET() {
   const [studentRows, paymentRows, expenseRows] = await Promise.all([
     getRows(TABS.KURS_OGRENCI),
     getRows(TABS.KURS_ODEME),
-    getRows(TABS.KURS_GIDER),
+    // KursGider sekmesi henüz yoksa boş dizi dön (ilk gider eklenince oluşur)
+    getRows(TABS.KURS_GIDER).catch(() => [] as string[][]),
   ])
 
   const students = studentRows.map((row) => {
