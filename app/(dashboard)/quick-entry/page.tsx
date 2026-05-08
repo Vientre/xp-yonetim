@@ -21,6 +21,7 @@ interface AttendanceEntry {
 }
 
 export default function QuickEntryPage() {
+  const [allowed, setAllowed] = useState<boolean | null>(null)
   const [employees, setEmployees] = useState<Employee[]>([])
   const [recentEntries, setRecentEntries] = useState<AttendanceEntry[]>([])
   const [fetching, setFetching] = useState(true)
@@ -41,10 +42,14 @@ export default function QuickEntryPage() {
   const fetchData = useCallback(async () => {
     setFetching(true)
     try {
-      const [empRes, attRes] = await Promise.all([
+      const [empRes, attRes, meRes] = await Promise.all([
         fetch("/api/employees"),
         fetch("/api/attendance"),
+        fetch("/api/me"),
       ])
+      const meData = await meRes.json()
+      if (meData?.role !== "admin") { setAllowed(false); return }
+      setAllowed(true)
       const empData = await empRes.json()
       const attData = await attRes.json()
       setEmployees(Array.isArray(empData) ? empData : [])
@@ -58,6 +63,15 @@ export default function QuickEntryPage() {
   }, [])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  if (allowed === false) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3 text-muted-foreground">
+        <Zap className="h-10 w-10 opacity-20" />
+        <p className="text-sm">Bu sayfaya erişim yetkiniz yok.</p>
+      </div>
+    )
+  }
 
   const bizEmployees = employees.filter((e) => e.businessId === businessId)
 

@@ -44,7 +44,7 @@ const navItems: NavItem[] = [
     title: "Hızlı Giriş",
     href: "/quick-entry",
     icon: Zap,
-    roles: ["admin", "manager", "staff"],
+    roles: ["admin"],
   },
   {
     title: "Günlük Kayıt",
