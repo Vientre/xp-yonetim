@@ -84,7 +84,7 @@ const navItems: NavItem[] = [
     roles: ["admin"],
   },
   {
-    title: "Rezervasyonlar",
+    title: "LaserTag Rezervasyon",
     href: "/rezervasyonlar",
     icon: CalendarClock,
     roles: ["admin", "manager", "staff"],

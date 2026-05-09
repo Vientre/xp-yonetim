@@ -262,7 +262,7 @@ export default function RezervasyonlarPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <CalendarClock className="h-6 w-6 text-blue-600" />
-            Rezervasyonlar
+            LaserTag Rezervasyon
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             Kayıtlar her ayın 1&apos;inde otomatik temizlenir
