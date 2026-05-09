@@ -1,7 +1,10 @@
 "use client"
 
 import { useEffect, useState, useMemo } from "react"
-import { CalendarClock, Plus, Trash2, RefreshCw, AlertTriangle, X, RotateCcw, Phone, StickyNote, Check, CheckCircle2, XCircle } from "lucide-react"
+import {
+  CalendarClock, Plus, Trash2, RefreshCw, AlertTriangle, X, RotateCcw, Phone,
+  StickyNote, Check, CheckCircle2, XCircle, Pencil, Users, Clock,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -11,14 +14,17 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
 type Durum = "" | "geldi" | "iptal"
+type Sure = 30 | 45 | 60
 
 type Reservation = {
   id: string
   tarih: string
   gun: string
   saat: string
-  isim: string
+  not: string
   telefon: string
+  kisiSayisi: number
+  sure: number
   ekleyenId: string
   ekleyenAd: string
   olusturmaTarihi: string
@@ -31,10 +37,13 @@ type Reservation = {
 
 type Me = { id: string; name: string; role: "admin" | "manager" | "staff" }
 
-type PendingAction = {
-  item: Reservation
-  type: "delete" | "complete"
-}
+type PendingAction = { item: Reservation; type: "delete" | "complete" }
+
+const SURE_OPTIONS: { value: Sure; label: string }[] = [
+  { value: 30, label: "30 dk (yarım saat)" },
+  { value: 45, label: "45 dk" },
+  { value: 60, label: "60 dk (1 saat)" },
+]
 
 function todayISO() {
   return new Date().toISOString().split("T")[0]
@@ -56,6 +65,29 @@ function formatDateTime(iso: string) {
   })
 }
 
+function addMinutes(hhmm: string, minutes: number): string {
+  if (!hhmm || !/^\d{2}:\d{2}$/.test(hhmm)) return ""
+  const [h, m] = hhmm.split(":").map(Number)
+  const total = h * 60 + m + minutes
+  const eh = Math.floor(total / 60) % 24
+  const em = ((total % 60) + 60) % 60
+  return `${String(eh).padStart(2, "0")}:${String(em).padStart(2, "0")}`
+}
+
+function formatSaatRange(saat: string, sure: number): string {
+  if (!saat) return ""
+  if (!sure || sure <= 0) return saat
+  const end = addMinutes(saat, sure + 15)
+  return end ? `${saat}-${end}` : saat
+}
+
+function formatSure(min: number): string {
+  if (min === 30) return "yarım saat"
+  if (min === 60) return "1 saat"
+  if (min > 0) return `${min} dk`
+  return ""
+}
+
 function groupByDate(items: Reservation[]) {
   const groups: { tarih: string; gun: string; items: Reservation[] }[] = []
   for (const r of items) {
@@ -69,18 +101,33 @@ function groupByDate(items: Reservation[]) {
   return groups
 }
 
+type FormState = {
+  tarih: string
+  saat: string
+  kisiSayisi: string
+  sure: Sure
+  telefon: string
+  not: string
+}
+
+const emptyForm = (): FormState => ({
+  tarih: todayISO(),
+  saat: "",
+  kisiSayisi: "",
+  sure: 30,
+  telefon: "",
+  not: "",
+})
+
 export default function RezervasyonlarPage() {
   const [me, setMe] = useState<Me | null>(null)
   const [items, setItems] = useState<Reservation[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [pending, setPending] = useState<PendingAction | null>(null)
-
-  const [tarih, setTarih] = useState(todayISO())
-  const [saat, setSaat] = useState("")
-  const [isim, setIsim] = useState("")
-  const [telefon, setTelefon] = useState("")
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [form, setForm] = useState<FormState>(emptyForm())
   const [submitting, setSubmitting] = useState(false)
+  const [pending, setPending] = useState<PendingAction | null>(null)
 
   async function fetchMe() {
     try {
@@ -109,33 +156,65 @@ export default function RezervasyonlarPage() {
   useEffect(() => { fetchMe() }, [])
   useEffect(() => { if (me) fetchAll() }, [me])
 
-  async function handleAdd(e: React.FormEvent) {
+  function openNewForm() {
+    setEditingId(null)
+    setForm(emptyForm())
+    setShowForm(true)
+  }
+
+  function openEditForm(r: Reservation) {
+    setEditingId(r.id)
+    setForm({
+      tarih: r.tarih,
+      saat: r.saat,
+      kisiSayisi: r.kisiSayisi > 0 ? String(r.kisiSayisi) : "",
+      sure: (r.sure === 45 || r.sure === 60 ? r.sure : 30) as Sure,
+      telefon: r.telefon,
+      not: r.not,
+    })
+    setShowForm(true)
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" })
+    }
+  }
+
+  function closeForm() {
+    setShowForm(false)
+    setEditingId(null)
+    setForm(emptyForm())
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!isim.trim() && !telefon.trim()) {
-      toast.error("Not veya telefon zorunlu")
-      return
-    }
-    if (!saat) {
-      toast.error("Saat zorunlu")
-      return
-    }
+    const kisi = parseInt(form.kisiSayisi, 10)
+    if (!form.saat) return toast.error("Saat zorunlu")
+    if (!Number.isFinite(kisi) || kisi <= 0) return toast.error("Kişi sayısı geçersiz")
+    if (!form.telefon.trim()) return toast.error("Telefon zorunlu")
+
     setSubmitting(true)
     try {
+      const payload = {
+        action: editingId ? "update" : "add",
+        ...(editingId ? { id: editingId } : {}),
+        tarih: form.tarih,
+        saat: form.saat,
+        kisiSayisi: kisi,
+        sure: form.sure,
+        telefon: form.telefon.trim(),
+        not: form.not.trim(),
+      }
       const res = await fetch("/api/rezervasyonlar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "add", tarih, saat, isim, telefon }),
+        body: JSON.stringify(payload),
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        toast.error(typeof j?.error === "string" ? j.error : "Eklenemedi")
+        toast.error(typeof j?.error === "string" ? j.error : "İşlem başarısız")
         return
       }
-      toast.success("Rezervasyon eklendi")
-      setIsim("")
-      setTelefon("")
-      setSaat("")
-      setShowForm(false)
+      toast.success(editingId ? "Rezervasyon güncellendi" : "Rezervasyon eklendi")
+      closeForm()
       await fetchAll()
     } finally {
       setSubmitting(false)
@@ -194,7 +273,7 @@ export default function RezervasyonlarPage() {
             <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
             Yenile
           </Button>
-          <Button onClick={() => setShowForm((v) => !v)}>
+          <Button onClick={() => (showForm && !editingId ? closeForm() : openNewForm())}>
             <Plus className="h-4 w-4 mr-2" />
             Yeni Rezervasyon
           </Button>
@@ -204,36 +283,93 @@ export default function RezervasyonlarPage() {
       {showForm && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Yeni Rezervasyon</CardTitle>
+            <CardTitle className="text-base">
+              {editingId ? "Rezervasyonu Düzenle" : "Yeni Rezervasyon"}
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Tarih</label>
-                <Input type="date" value={tarih} onChange={(e) => setTarih(e.target.value)} required />
+                <label className="text-xs text-muted-foreground">Tarih *</label>
+                <Input
+                  type="date"
+                  value={form.tarih}
+                  onChange={(e) => setForm((f) => ({ ...f, tarih: e.target.value }))}
+                  required
+                />
               </div>
               <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Saat</label>
-                <Input type="time" value={saat} onChange={(e) => setSaat(e.target.value)} required />
+                <label className="text-xs text-muted-foreground">Saat *</label>
+                <Input
+                  type="time"
+                  value={form.saat}
+                  onChange={(e) => setForm((f) => ({ ...f, saat: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Kişi sayısı *</label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={form.kisiSayisi}
+                  onChange={(e) => setForm((f) => ({ ...f, kisiSayisi: e.target.value }))}
+                  placeholder="örn. 4"
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Süre *</label>
+                <select
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  value={form.sure}
+                  onChange={(e) => setForm((f) => ({ ...f, sure: parseInt(e.target.value, 10) as Sure }))}
+                >
+                  {SURE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Telefon *</label>
+                <Input
+                  value={form.telefon}
+                  onChange={(e) => setForm((f) => ({ ...f, telefon: e.target.value }))}
+                  placeholder="05xx ..."
+                  required
+                />
               </div>
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground">Not</label>
-                <Input value={isim} onChange={(e) => setIsim(e.target.value)} placeholder="Örn: 4 kişi 1 saat" />
+                <Input
+                  value={form.not}
+                  onChange={(e) => setForm((f) => ({ ...f, not: e.target.value }))}
+                  placeholder="(opsiyonel)"
+                />
               </div>
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Telefon</label>
-                <Input value={telefon} onChange={(e) => setTelefon(e.target.value)} placeholder="05xx ..." />
-              </div>
-              <div className="sm:col-span-2 lg:col-span-4 flex justify-end gap-2 pt-1">
-                <Button type="button" variant="outline" onClick={() => setShowForm(false)}>İptal</Button>
-                <Button type="submit" disabled={submitting}>
-                  {submitting ? "Kaydediliyor..." : "Kaydet"}
-                </Button>
+              <div className="sm:col-span-2 lg:col-span-3 flex items-center justify-between gap-2 pt-1">
+                <p className="text-xs text-muted-foreground">
+                  {form.saat && Number.isFinite(parseInt(form.kisiSayisi, 10)) ? (
+                    <>
+                      Önizleme: <span className="font-mono font-medium text-slate-700">
+                        {formatSaatRange(form.saat, form.sure)}
+                      </span>{" "}
+                      {form.kisiSayisi || "?"} kişi · {formatSure(form.sure)}
+                    </>
+                  ) : (
+                    "* zorunlu alanlar"
+                  )}
+                </p>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" onClick={closeForm}>İptal</Button>
+                  <Button type="submit" disabled={submitting}>
+                    {submitting
+                      ? "Kaydediliyor..."
+                      : editingId ? "Güncelle" : "Kaydet"}
+                  </Button>
+                </div>
               </div>
             </form>
-            <p className="text-xs text-muted-foreground mt-2">
-              Not ve telefondan en az biri girilmeli.
-            </p>
           </CardContent>
         </Card>
       )}
@@ -249,6 +385,7 @@ export default function RezervasyonlarPage() {
               loading={loading}
               items={active}
               showAuditAdd
+              onEdit={(r) => openEditForm(r)}
               onComplete={(r) => setPending({ item: r, type: "complete" })}
               onDelete={(r) => setPending({ item: r, type: "delete" })}
             />
@@ -267,6 +404,7 @@ export default function RezervasyonlarPage() {
         <ReservationGroups
           loading={loading}
           items={active}
+          onEdit={(r) => openEditForm(r)}
           onComplete={(r) => setPending({ item: r, type: "complete" })}
           onDelete={(r) => setPending({ item: r, type: "delete" })}
         />
@@ -288,6 +426,7 @@ function ReservationGroups({
   items,
   showAuditAdd = false,
   showAuditDelete = false,
+  onEdit,
   onComplete,
   onDelete,
   onRestore,
@@ -296,6 +435,7 @@ function ReservationGroups({
   items: Reservation[]
   showAuditAdd?: boolean
   showAuditDelete?: boolean
+  onEdit?: (r: Reservation) => void
   onComplete?: (r: Reservation) => void
   onDelete?: (r: Reservation) => void
   onRestore?: (id: string) => void
@@ -340,9 +480,10 @@ function ReservationGroups({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-gray-50">
-                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground w-20">Saat</th>
-                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Not</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground whitespace-nowrap">Saat</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Kişi · Süre</th>
                   <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Telefon</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Not</th>
                   {showAuditAdd && (
                     <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Ekleyen</th>
                   )}
@@ -358,15 +499,24 @@ function ReservationGroups({
               <tbody>
                 {g.items.map((r) => (
                   <tr key={r.id} className="border-b last:border-0 hover:bg-gray-50">
-                    <td className="px-4 py-2.5 font-mono whitespace-nowrap">{r.saat}</td>
-                    <td className="px-4 py-2.5">
-                      {r.isim ? (
-                        <span className="inline-flex items-center gap-1.5">
-                          <StickyNote className="h-3.5 w-3.5 text-muted-foreground" />
-                          {r.isim}
+                    <td className="px-4 py-2.5 font-mono whitespace-nowrap font-medium text-slate-800">
+                      {formatSaatRange(r.saat, r.sure)}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      {r.kisiSayisi > 0 ? (
+                        <span className="inline-flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1">
+                            <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                            {r.kisiSayisi}
+                          </span>
+                          <span className="text-muted-foreground">·</span>
+                          <span className="inline-flex items-center gap-1">
+                            <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                            {formatSure(r.sure)}
+                          </span>
                         </span>
                       ) : (
-                        <span className="text-muted-foreground">-</span>
+                        <span className="text-muted-foreground">—</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5">
@@ -375,6 +525,16 @@ function ReservationGroups({
                           <Phone className="h-3.5 w-3.5" />
                           {r.telefon}
                         </a>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {r.not ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <StickyNote className="h-3.5 w-3.5 text-muted-foreground" />
+                          {r.not}
+                        </span>
                       ) : (
                         <span className="text-muted-foreground">-</span>
                       )}
@@ -416,6 +576,18 @@ function ReservationGroups({
                             >
                               <Check className="h-3.5 w-3.5 mr-1" />
                               Geldi
+                            </Button>
+                          )}
+                          {onEdit && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-blue-700 border-blue-200 hover:bg-blue-50"
+                              onClick={() => onEdit(r)}
+                              title="Düzenle"
+                            >
+                              <Pencil className="h-3.5 w-3.5 mr-1" />
+                              Düzenle
                             </Button>
                           )}
                           {onDelete && (
@@ -495,8 +667,10 @@ function ConfirmDialog({
               {isComplete ? "Müşteri geldi mi?" : "Rezervasyonu sil?"}
             </h3>
             <p className="text-sm text-slate-500 mt-0.5">
-              {formatTrDate(item.tarih)} {item.saat} —{" "}
-              <span className="font-medium text-slate-700">{item.isim || item.telefon}</span>
+              {formatTrDate(item.tarih)} {formatSaatRange(item.saat, item.sure)} —{" "}
+              <span className="font-medium text-slate-700">
+                {item.kisiSayisi > 0 ? `${item.kisiSayisi} kişi` : (item.not || item.telefon)}
+              </span>
             </p>
           </div>
           <button onClick={onCancel} className="p-1 rounded-md hover:bg-slate-100 text-slate-400">
@@ -517,17 +691,7 @@ function ConfirmDialog({
             )}
             onClick={onConfirm}
           >
-            {isComplete ? (
-              <>
-                <Check className="w-3.5 h-3.5 mr-1" />
-                Geldi
-              </>
-            ) : (
-              <>
-                <Trash2 className="w-3.5 h-3.5 mr-1" />
-                Sil
-              </>
-            )}
+            {isComplete ? (<><Check className="w-3.5 h-3.5 mr-1" />Geldi</>) : (<><Trash2 className="w-3.5 h-3.5 mr-1" />Sil</>)}
           </Button>
         </div>
       </div>
