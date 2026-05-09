@@ -21,6 +21,7 @@ import {
   GraduationCap,
   Swords,
   Zap,
+  CalendarClock,
   X,
 } from "lucide-react"
 import { useState } from "react"
@@ -81,6 +82,12 @@ const navItems: NavItem[] = [
     href: "/kurs",
     icon: GraduationCap,
     roles: ["admin"],
+  },
+  {
+    title: "Rezervasyonlar",
+    href: "/rezervasyonlar",
+    icon: CalendarClock,
+    roles: ["admin", "manager", "staff"],
   },
   {
     title: "Raporlar",

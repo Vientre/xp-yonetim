@@ -59,4 +59,5 @@ export const TABS = {
   KURS_ODEME: "KursOdeme",
   KURS_GIDER: "KursGider",
   EMPLOYEES: "Personeller",
+  RESERVATIONS: "Rezervasyonlar",
 } as const
