@@ -20,6 +20,10 @@ function getTrDayName(isoDate: string): string {
   return TR_DAYS[d.getDay()] ?? ""
 }
 
+function isTruthyFlag(v: string | undefined): boolean {
+  return (v ?? "").trim().toLowerCase() === "true"
+}
+
 type Reservation = {
   id: string
   tarih: string
@@ -47,7 +51,7 @@ function rowToReservation(row: string[]): Reservation {
     ekleyenId: row[6] ?? "",
     ekleyenAd: row[7] ?? "",
     olusturmaTarihi: row[8] ?? "",
-    silindi: row[9] === "true",
+    silindi: isTruthyFlag(row[9]),
     silenId: row[10] ?? "",
     silenAd: row[11] ?? "",
     silmeTarihi: row[12] ?? "",
@@ -147,7 +151,7 @@ export async function POST(req: NextRequest) {
     if (idx === -1) return NextResponse.json({ error: "Bulunamadı" }, { status: 404 })
 
     const row = rows[idx]
-    if (row[9] === "true") {
+    if (isTruthyFlag(row[9])) {
       return NextResponse.json({ error: "Zaten silinmiş" }, { status: 400 })
     }
 
