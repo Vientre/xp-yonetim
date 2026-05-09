@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useMemo } from "react"
-import { CalendarClock, Plus, Trash2, RefreshCw, AlertTriangle, X, RotateCcw, Phone, User as UserIcon } from "lucide-react"
+import { CalendarClock, Plus, Trash2, RefreshCw, AlertTriangle, X, RotateCcw, Phone, StickyNote, Check, CheckCircle2, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,6 +9,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+
+type Durum = "" | "geldi" | "iptal"
 
 type Reservation = {
   id: string
@@ -24,9 +26,15 @@ type Reservation = {
   silenId: string
   silenAd: string
   silmeTarihi: string
+  durum: Durum
 }
 
 type Me = { id: string; name: string; role: "admin" | "manager" | "staff" }
+
+type PendingAction = {
+  item: Reservation
+  type: "delete" | "complete"
+}
 
 function todayISO() {
   return new Date().toISOString().split("T")[0]
@@ -48,12 +56,25 @@ function formatDateTime(iso: string) {
   })
 }
 
+function groupByDate(items: Reservation[]) {
+  const groups: { tarih: string; gun: string; items: Reservation[] }[] = []
+  for (const r of items) {
+    const last = groups[groups.length - 1]
+    if (last && last.tarih === r.tarih) {
+      last.items.push(r)
+    } else {
+      groups.push({ tarih: r.tarih, gun: r.gun, items: [r] })
+    }
+  }
+  return groups
+}
+
 export default function RezervasyonlarPage() {
   const [me, setMe] = useState<Me | null>(null)
   const [items, setItems] = useState<Reservation[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [pendingDelete, setPendingDelete] = useState<Reservation | null>(null)
+  const [pending, setPending] = useState<PendingAction | null>(null)
 
   const [tarih, setTarih] = useState(todayISO())
   const [saat, setSaat] = useState("")
@@ -91,7 +112,7 @@ export default function RezervasyonlarPage() {
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
     if (!isim.trim() && !telefon.trim()) {
-      toast.error("İsim veya telefon zorunlu")
+      toast.error("Not veya telefon zorunlu")
       return
     }
     if (!saat) {
@@ -107,7 +128,7 @@ export default function RezervasyonlarPage() {
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        toast.error(j?.error?.message || "Eklenemedi")
+        toast.error(typeof j?.error === "string" ? j.error : "Eklenemedi")
         return
       }
       toast.success("Rezervasyon eklendi")
@@ -121,20 +142,21 @@ export default function RezervasyonlarPage() {
     }
   }
 
-  async function confirmDelete() {
-    if (!pendingDelete) return
-    const id = pendingDelete.id
-    setPendingDelete(null)
+  async function confirmAction() {
+    if (!pending) return
+    const { item, type } = pending
+    setPending(null)
     const res = await fetch("/api/rezervasyonlar", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "delete", id }),
+      body: JSON.stringify({ action: type, id: item.id }),
     })
     if (!res.ok) {
-      toast.error("Silinemedi")
+      const j = await res.json().catch(() => ({}))
+      toast.error(typeof j?.error === "string" ? j.error : "İşlem başarısız")
       return
     }
-    toast.success("Rezervasyon silindi")
+    toast.success(type === "complete" ? "Müşteri geldi olarak işaretlendi" : "Rezervasyon silindi")
     await fetchAll()
   }
 
@@ -195,8 +217,8 @@ export default function RezervasyonlarPage() {
                 <Input type="time" value={saat} onChange={(e) => setSaat(e.target.value)} required />
               </div>
               <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">İsim</label>
-                <Input value={isim} onChange={(e) => setIsim(e.target.value)} placeholder="Ad Soyad" />
+                <label className="text-xs text-muted-foreground">Not</label>
+                <Input value={isim} onChange={(e) => setIsim(e.target.value)} placeholder="Örn: 4 kişi 1 saat" />
               </div>
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground">Telefon</label>
@@ -210,7 +232,7 @@ export default function RezervasyonlarPage() {
               </div>
             </form>
             <p className="text-xs text-muted-foreground mt-2">
-              İsim ve telefondan en az biri girilmeli.
+              Not ve telefondan en az biri girilmeli.
             </p>
           </CardContent>
         </Card>
@@ -220,18 +242,19 @@ export default function RezervasyonlarPage() {
         <Tabs defaultValue="active">
           <TabsList>
             <TabsTrigger value="active">Aktif ({active.length})</TabsTrigger>
-            <TabsTrigger value="deleted">Silinmiş ({deleted.length})</TabsTrigger>
+            <TabsTrigger value="deleted">Geçmiş ({deleted.length})</TabsTrigger>
           </TabsList>
           <TabsContent value="active" className="mt-4">
-            <ReservationTable
+            <ReservationGroups
               loading={loading}
               items={active}
               showAuditAdd
-              onDelete={(r) => setPendingDelete(r)}
+              onComplete={(r) => setPending({ item: r, type: "complete" })}
+              onDelete={(r) => setPending({ item: r, type: "delete" })}
             />
           </TabsContent>
           <TabsContent value="deleted" className="mt-4">
-            <ReservationTable
+            <ReservationGroups
               loading={loading}
               items={deleted}
               showAuditAdd
@@ -241,29 +264,31 @@ export default function RezervasyonlarPage() {
           </TabsContent>
         </Tabs>
       ) : (
-        <ReservationTable
+        <ReservationGroups
           loading={loading}
           items={active}
-          onDelete={(r) => setPendingDelete(r)}
+          onComplete={(r) => setPending({ item: r, type: "complete" })}
+          onDelete={(r) => setPending({ item: r, type: "delete" })}
         />
       )}
 
-      {pendingDelete && (
-        <DeleteDialog
-          item={pendingDelete}
-          onCancel={() => setPendingDelete(null)}
-          onConfirm={confirmDelete}
+      {pending && (
+        <ConfirmDialog
+          pending={pending}
+          onCancel={() => setPending(null)}
+          onConfirm={confirmAction}
         />
       )}
     </div>
   )
 }
 
-function ReservationTable({
+function ReservationGroups({
   loading,
   items,
   showAuditAdd = false,
   showAuditDelete = false,
+  onComplete,
   onDelete,
   onRestore,
 }: {
@@ -271,6 +296,7 @@ function ReservationTable({
   items: Reservation[]
   showAuditAdd?: boolean
   showAuditDelete?: boolean
+  onComplete?: (r: Reservation) => void
   onDelete?: (r: Reservation) => void
   onRestore?: (id: string) => void
 }) {
@@ -296,115 +322,178 @@ function ReservationTable({
     )
   }
 
+  const groups = groupByDate(items)
+
   return (
-    <Card>
-      <CardContent className="p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-gray-50">
-                <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Tarih</th>
-                <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Gün</th>
-                <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Saat</th>
-                <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">İsim</th>
-                <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Telefon</th>
-                {showAuditAdd && (
-                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Ekleyen</th>
-                )}
-                {showAuditDelete && (
-                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Silen</th>
-                )}
-                <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">İşlem</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((r) => (
-                <tr key={r.id} className="border-b last:border-0 hover:bg-gray-50">
-                  <td className="px-4 py-2.5 whitespace-nowrap">{formatTrDate(r.tarih)}</td>
-                  <td className="px-4 py-2.5 text-xs text-muted-foreground">{r.gun}</td>
-                  <td className="px-4 py-2.5 font-mono">{r.saat}</td>
-                  <td className="px-4 py-2.5">
-                    {r.isim ? (
-                      <span className="inline-flex items-center gap-1.5">
-                        <UserIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                        {r.isim}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    {r.telefon ? (
-                      <a href={`tel:${r.telefon}`} className="inline-flex items-center gap-1.5 text-blue-600 hover:underline">
-                        <Phone className="h-3.5 w-3.5" />
-                        {r.telefon}
-                      </a>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </td>
+    <div className="space-y-4">
+      {groups.map((g) => (
+        <Card key={g.tarih} className="overflow-hidden">
+          <div className="flex items-center justify-between bg-blue-50 border-b border-blue-100 px-4 py-2.5">
+            <div className="flex items-center gap-2">
+              <CalendarClock className="h-4 w-4 text-blue-600" />
+              <span className="font-semibold text-sm text-blue-900">{formatTrDate(g.tarih)}</span>
+              <span className="text-xs text-blue-700">— {g.gun}</span>
+            </div>
+            <span className="text-xs text-blue-700 font-medium">{g.items.length} kayıt</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-gray-50">
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground w-20">Saat</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Not</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Telefon</th>
                   {showAuditAdd && (
-                    <td className="px-4 py-2.5">
-                      <p className="text-xs">{r.ekleyenAd || "-"}</p>
-                      <p className="text-xs text-muted-foreground">{formatDateTime(r.olusturmaTarihi)}</p>
-                    </td>
+                    <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Ekleyen</th>
                   )}
                   {showAuditDelete && (
-                    <td className="px-4 py-2.5">
-                      <p className="text-xs text-red-600">{r.silenAd || "-"}</p>
-                      <p className="text-xs text-muted-foreground">{formatDateTime(r.silmeTarihi)}</p>
-                    </td>
+                    <>
+                      <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Durum</th>
+                      <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">İşlem Yapan</th>
+                    </>
                   )}
-                  <td className="px-4 py-2.5 text-right">
-                    {r.silindi ? (
-                      onRestore && (
-                        <Button variant="outline" size="sm" onClick={() => onRestore(r.id)}>
-                          <RotateCcw className="h-3.5 w-3.5 mr-1" />
-                          Geri Al
-                        </Button>
-                      )
-                    ) : (
-                      onDelete && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-red-600 hover:bg-red-50"
-                          onClick={() => onDelete(r)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5 mr-1" />
-                          Sil
-                        </Button>
-                      )
-                    )}
-                  </td>
+                  <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">İşlem</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </CardContent>
-    </Card>
+              </thead>
+              <tbody>
+                {g.items.map((r) => (
+                  <tr key={r.id} className="border-b last:border-0 hover:bg-gray-50">
+                    <td className="px-4 py-2.5 font-mono whitespace-nowrap">{r.saat}</td>
+                    <td className="px-4 py-2.5">
+                      {r.isim ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <StickyNote className="h-3.5 w-3.5 text-muted-foreground" />
+                          {r.isim}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {r.telefon ? (
+                        <a href={`tel:${r.telefon}`} className="inline-flex items-center gap-1.5 text-blue-600 hover:underline">
+                          <Phone className="h-3.5 w-3.5" />
+                          {r.telefon}
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </td>
+                    {showAuditAdd && (
+                      <td className="px-4 py-2.5">
+                        <p className="text-xs">{r.ekleyenAd || "-"}</p>
+                        <p className="text-xs text-muted-foreground">{formatDateTime(r.olusturmaTarihi)}</p>
+                      </td>
+                    )}
+                    {showAuditDelete && (
+                      <>
+                        <td className="px-4 py-2.5">
+                          <DurumBadge durum={r.durum} />
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <p className="text-xs">{r.silenAd || "-"}</p>
+                          <p className="text-xs text-muted-foreground">{formatDateTime(r.silmeTarihi)}</p>
+                        </td>
+                      </>
+                    )}
+                    <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                      {r.silindi ? (
+                        onRestore && (
+                          <Button variant="outline" size="sm" onClick={() => onRestore(r.id)}>
+                            <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                            Geri Al
+                          </Button>
+                        )
+                      ) : (
+                        <div className="flex gap-1.5 justify-end">
+                          {onComplete && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                              onClick={() => onComplete(r)}
+                              title="Müşteri geldi"
+                            >
+                              <Check className="h-3.5 w-3.5 mr-1" />
+                              Geldi
+                            </Button>
+                          )}
+                          {onDelete && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-red-600 border-red-200 hover:bg-red-50"
+                              onClick={() => onDelete(r)}
+                              title="Sil"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 mr-1" />
+                              Sil
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ))}
+    </div>
   )
 }
 
-function DeleteDialog({
-  item,
+function DurumBadge({ durum }: { durum: Durum }) {
+  if (durum === "geldi") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+        <CheckCircle2 className="h-3 w-3" />
+        Geldi
+      </span>
+    )
+  }
+  if (durum === "iptal") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+        <XCircle className="h-3 w-3" />
+        İptal
+      </span>
+    )
+  }
+  return <span className="text-xs text-muted-foreground">-</span>
+}
+
+function ConfirmDialog({
+  pending,
   onCancel,
   onConfirm,
 }: {
-  item: Reservation
+  pending: PendingAction
   onCancel: () => void
   onConfirm: () => void
 }) {
+  const isComplete = pending.type === "complete"
+  const { item } = pending
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl p-6 mx-4 w-full max-w-sm">
         <div className="flex items-start gap-3 mb-4">
-          <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-            <AlertTriangle className="w-5 h-5 text-red-600" />
+          <div className={cn(
+            "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
+            isComplete ? "bg-emerald-100" : "bg-red-100"
+          )}>
+            {isComplete ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+            ) : (
+              <AlertTriangle className="w-5 h-5 text-red-600" />
+            )}
           </div>
           <div className="flex-1">
-            <h3 className="font-semibold text-slate-900 text-base">Rezervasyonu sil?</h3>
+            <h3 className="font-semibold text-slate-900 text-base">
+              {isComplete ? "Müşteri geldi mi?" : "Rezervasyonu sil?"}
+            </h3>
             <p className="text-sm text-slate-500 mt-0.5">
               {formatTrDate(item.tarih)} {item.saat} —{" "}
               <span className="font-medium text-slate-700">{item.isim || item.telefon}</span>
@@ -415,13 +504,30 @@ function DeleteDialog({
           </button>
         </div>
         <p className="text-xs text-slate-500 mb-5">
-          Yöneticiler silen kişiyi ve saati görebilecek.
+          {isComplete
+            ? "Kayıt 'Geldi' olarak işaretlenip listeden kaldırılacak."
+            : "Kayıt 'İptal' olarak işaretlenip listeden kaldırılacak."}
         </p>
         <div className="flex gap-2 justify-end">
-          <Button variant="outline" size="sm" onClick={onCancel}>İptal</Button>
-          <Button size="sm" className="bg-red-600 hover:bg-red-700" onClick={onConfirm}>
-            <Trash2 className="w-3.5 h-3.5 mr-1" />
-            Sil
+          <Button variant="outline" size="sm" onClick={onCancel}>Vazgeç</Button>
+          <Button
+            size="sm"
+            className={cn(
+              isComplete ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"
+            )}
+            onClick={onConfirm}
+          >
+            {isComplete ? (
+              <>
+                <Check className="w-3.5 h-3.5 mr-1" />
+                Geldi
+              </>
+            ) : (
+              <>
+                <Trash2 className="w-3.5 h-3.5 mr-1" />
+                Sil
+              </>
+            )}
           </Button>
         </div>
       </div>

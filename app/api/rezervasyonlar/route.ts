@@ -4,7 +4,8 @@
  * Rezervasyonlar tab —
  * id | tarih (YYYY-MM-DD) | gun | saat (HH:mm) | isim | telefon |
  * ekleyenId | ekleyenAd | olusturmaTarihi (ISO) |
- * silindi ("true"/"false") | silenId | silenAd | silmeTarihi (ISO)
+ * silindi ("true"/"false") | silenId | silenAd | silmeTarihi (ISO) |
+ * durum ("" | "geldi" | "iptal")
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -24,6 +25,8 @@ function isTruthyFlag(v: string | undefined): boolean {
   return (v ?? "").trim().toLowerCase() === "true"
 }
 
+type Durum = "" | "geldi" | "iptal"
+
 type Reservation = {
   id: string
   tarih: string
@@ -38,6 +41,13 @@ type Reservation = {
   silenId: string
   silenAd: string
   silmeTarihi: string
+  durum: Durum
+}
+
+function parseDurum(v: string | undefined): Durum {
+  const x = (v ?? "").trim().toLowerCase()
+  if (x === "geldi" || x === "iptal") return x
+  return ""
 }
 
 function rowToReservation(row: string[]): Reservation {
@@ -55,6 +65,7 @@ function rowToReservation(row: string[]): Reservation {
     silenId: row[10] ?? "",
     silenAd: row[11] ?? "",
     silmeTarihi: row[12] ?? "",
+    durum: parseDurum(row[13]),
   }
 }
 
@@ -86,7 +97,7 @@ const addSchema = z
     telefon: z.string().optional().default(""),
   })
   .refine((d) => d.isim.trim().length > 0 || d.telefon.trim().length > 0, {
-    message: "İsim veya telefon zorunlu",
+    message: "Not veya telefon zorunlu",
     path: ["isim"],
   })
 
@@ -95,10 +106,46 @@ const deleteSchema = z.object({
   id: z.string().min(1),
 })
 
+const completeSchema = z.object({
+  action: z.literal("complete"),
+  id: z.string().min(1),
+})
+
 const restoreSchema = z.object({
   action: z.literal("restore"),
   id: z.string().min(1),
 })
+
+async function markAsHandled(
+  id: string,
+  durum: "geldi" | "iptal",
+  user: { id: string; name: string }
+) {
+  const rows = await getRows(TABS.RESERVATIONS)
+  const idx = rows.findIndex((r) => r[0] === id)
+  if (idx === -1) return { error: "Kayıt bulunamadı", status: 404 as const }
+
+  const row = rows[idx]
+  if (isTruthyFlag(row[9])) {
+    return { error: "Zaten işlenmiş", status: 400 as const }
+  }
+
+  const silmeTarihi = new Date().toISOString()
+  await updateRowByIndex(TABS.RESERVATIONS, idx, [
+    row[0], row[1], row[2], row[3], row[4], row[5],
+    row[6], row[7], row[8],
+    "true", user.id, user.name, silmeTarihi, durum,
+  ])
+
+  return {
+    ok: true,
+    id,
+    silenId: user.id,
+    silenAd: user.name,
+    silmeTarihi,
+    durum,
+  }
+}
 
 export async function POST(req: NextRequest) {
   const user = await getAuthUser()
@@ -119,7 +166,7 @@ export async function POST(req: NextRequest) {
     await appendRow(TABS.RESERVATIONS, [
       id, tarih, gun, saat, isim.trim(), telefon.trim(),
       user.id, user.name, olusturmaTarihi,
-      "false", "", "", "",
+      "false", "", "", "", "",
     ])
 
     return NextResponse.json(
@@ -134,41 +181,33 @@ export async function POST(req: NextRequest) {
         silenId: "",
         silenAd: "",
         silmeTarihi: "",
+        durum: "" as Durum,
       },
       { status: 201 }
     )
   }
 
-  if (body.action === "delete") {
-    const parsed = deleteSchema.safeParse(body)
+  if (body.action === "delete" || body.action === "complete") {
+    const schema = body.action === "delete" ? deleteSchema : completeSchema
+    const parsed = schema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
     }
-    const { id } = parsed.data
 
-    const rows = await getRows(TABS.RESERVATIONS).catch(() => [] as string[][])
-    const idx = rows.findIndex((r) => r[0] === id)
-    if (idx === -1) return NextResponse.json({ error: "Bulunamadı" }, { status: 404 })
-
-    const row = rows[idx]
-    if (isTruthyFlag(row[9])) {
-      return NextResponse.json({ error: "Zaten silinmiş" }, { status: 400 })
+    try {
+      const result = await markAsHandled(
+        parsed.data.id,
+        body.action === "complete" ? "geldi" : "iptal",
+        user
+      )
+      if ("error" in result) {
+        return NextResponse.json({ error: result.error }, { status: result.status })
+      }
+      return NextResponse.json(result)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Bilinmeyen hata"
+      return NextResponse.json({ error: `Hata: ${msg}` }, { status: 500 })
     }
-
-    const silmeTarihi = new Date().toISOString()
-    await updateRowByIndex(TABS.RESERVATIONS, idx, [
-      row[0], row[1], row[2], row[3], row[4], row[5],
-      row[6], row[7], row[8],
-      "true", user.id, user.name, silmeTarihi,
-    ])
-
-    return NextResponse.json({
-      ok: true,
-      id,
-      silenId: user.id,
-      silenAd: user.name,
-      silmeTarihi,
-    })
   }
 
   if (body.action === "restore") {
@@ -189,7 +228,7 @@ export async function POST(req: NextRequest) {
     await updateRowByIndex(TABS.RESERVATIONS, idx, [
       row[0], row[1], row[2], row[3], row[4], row[5],
       row[6], row[7], row[8],
-      "false", "", "", "",
+      "false", "", "", "", "",
     ])
 
     return NextResponse.json({ ok: true, id })
