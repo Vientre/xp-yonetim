@@ -33,6 +33,7 @@ type Reservation = {
   silenAd: string
   silmeTarihi: string
   durum: Durum
+  musteriNotu: string
 }
 
 type Me = { id: string; name: string; role: "admin" | "manager" | "staff" }
@@ -128,6 +129,7 @@ export default function RezervasyonlarPage() {
   const [form, setForm] = useState<FormState>(emptyForm())
   const [submitting, setSubmitting] = useState(false)
   const [pending, setPending] = useState<PendingAction | null>(null)
+  const [noteEditing, setNoteEditing] = useState<Reservation | null>(null)
 
   async function fetchMe() {
     try {
@@ -142,8 +144,7 @@ export default function RezervasyonlarPage() {
   async function fetchAll() {
     setLoading(true)
     try {
-      const url = me?.role === "admin" ? "/api/rezervasyonlar?includeDeleted=1" : "/api/rezervasyonlar"
-      const res = await fetch(url)
+      const res = await fetch("/api/rezervasyonlar?includeDeleted=1")
       if (res.ok) {
         const json = await res.json()
         setItems(json.reservations ?? [])
@@ -253,6 +254,21 @@ export default function RezervasyonlarPage() {
     await fetchAll()
   }
 
+  async function uncomplete(id: string) {
+    const res = await fetch("/api/rezervasyonlar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "uncomplete", id }),
+    })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      toast.error(typeof j?.error === "string" ? j.error : "Geri alınamadı")
+      return
+    }
+    toast.success("Geri alındı")
+    await fetchAll()
+  }
+
   const active = useMemo(() => items.filter((r) => !r.silindi), [items])
   const deleted = useMemo(() => items.filter((r) => r.silindi), [items])
 
@@ -264,9 +280,6 @@ export default function RezervasyonlarPage() {
             <CalendarClock className="h-6 w-6 text-blue-600" />
             LaserTag Rezervasyon
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Kayıtlar her ayın 1&apos;inde otomatik temizlenir
-          </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={fetchAll} disabled={loading}>
@@ -374,47 +387,63 @@ export default function RezervasyonlarPage() {
         </Card>
       )}
 
-      {me?.role === "admin" ? (
-        <Tabs defaultValue="active">
-          <TabsList>
-            <TabsTrigger value="active">Aktif ({active.length})</TabsTrigger>
-            <TabsTrigger value="deleted">Geçmiş ({deleted.length})</TabsTrigger>
-          </TabsList>
-          <TabsContent value="active" className="mt-4">
-            <ReservationGroups
-              loading={loading}
-              items={active}
-              showAuditAdd
-              onEdit={(r) => openEditForm(r)}
-              onComplete={(r) => setPending({ item: r, type: "complete" })}
-              onDelete={(r) => setPending({ item: r, type: "delete" })}
-            />
-          </TabsContent>
-          <TabsContent value="deleted" className="mt-4">
-            <ReservationGroups
-              loading={loading}
-              items={deleted}
-              showAuditAdd
-              showAuditDelete
-              onRestore={(id) => restore(id)}
-            />
-          </TabsContent>
-        </Tabs>
-      ) : (
-        <ReservationGroups
-          loading={loading}
-          items={active}
-          onEdit={(r) => openEditForm(r)}
-          onComplete={(r) => setPending({ item: r, type: "complete" })}
-          onDelete={(r) => setPending({ item: r, type: "delete" })}
-        />
-      )}
+      <Tabs defaultValue="active">
+        <TabsList>
+          <TabsTrigger value="active">Aktif ({active.length})</TabsTrigger>
+          <TabsTrigger value="deleted">Geçmiş ({deleted.length})</TabsTrigger>
+        </TabsList>
+        <TabsContent value="active" className="mt-4">
+          <ReservationGroups
+            loading={loading}
+            items={active}
+            showAuditAdd
+            onEdit={(r) => openEditForm(r)}
+            onComplete={(r) => setPending({ item: r, type: "complete" })}
+            onUncomplete={(id) => uncomplete(id)}
+            onDelete={(r) => setPending({ item: r, type: "delete" })}
+          />
+        </TabsContent>
+        <TabsContent value="deleted" className="mt-4">
+          <ReservationGroups
+            loading={loading}
+            items={deleted}
+            showAuditAdd
+            showAuditDelete
+            showCustomerNote
+            onAddNote={(r) => setNoteEditing(r)}
+            onRestore={me?.role === "admin" ? (id) => restore(id) : undefined}
+          />
+        </TabsContent>
+      </Tabs>
 
       {pending && (
         <ConfirmDialog
           pending={pending}
           onCancel={() => setPending(null)}
           onConfirm={confirmAction}
+        />
+      )}
+
+      {noteEditing && (
+        <NoteDialog
+          item={noteEditing}
+          onCancel={() => setNoteEditing(null)}
+          onSave={async (text) => {
+            const id = noteEditing.id
+            setNoteEditing(null)
+            const res = await fetch("/api/rezervasyonlar", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "addNote", id, musteriNotu: text }),
+            })
+            if (!res.ok) {
+              const j = await res.json().catch(() => ({}))
+              toast.error(typeof j?.error === "string" ? j.error : "Not kaydedilemedi")
+              return
+            }
+            toast.success("Müşteri notu kaydedildi")
+            await fetchAll()
+          }}
         />
       )}
     </div>
@@ -426,19 +455,25 @@ function ReservationGroups({
   items,
   showAuditAdd = false,
   showAuditDelete = false,
+  showCustomerNote = false,
   onEdit,
   onComplete,
+  onUncomplete,
   onDelete,
   onRestore,
+  onAddNote,
 }: {
   loading: boolean
   items: Reservation[]
   showAuditAdd?: boolean
   showAuditDelete?: boolean
+  showCustomerNote?: boolean
   onEdit?: (r: Reservation) => void
   onComplete?: (r: Reservation) => void
+  onUncomplete?: (id: string) => void
   onDelete?: (r: Reservation) => void
   onRestore?: (id: string) => void
+  onAddNote?: (r: Reservation) => void
 }) {
   if (loading) {
     return (
@@ -493,13 +528,27 @@ function ReservationGroups({
                       <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">İşlem Yapan</th>
                     </>
                   )}
+                  {showCustomerNote && (
+                    <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Müşteri Notu</th>
+                  )}
                   <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">İşlem</th>
                 </tr>
               </thead>
               <tbody>
-                {g.items.map((r) => (
-                  <tr key={r.id} className="border-b last:border-0 hover:bg-gray-50">
-                    <td className="px-4 py-2.5 font-mono whitespace-nowrap font-medium text-slate-800">
+                {g.items.map((r) => {
+                  const isGeldi = r.durum === "geldi" && !r.silindi
+                  return (
+                  <tr
+                    key={r.id}
+                    className={cn(
+                      "border-b last:border-0",
+                      isGeldi ? "bg-emerald-50 hover:bg-emerald-100" : "hover:bg-gray-50"
+                    )}
+                  >
+                    <td className={cn(
+                      "px-4 py-2.5 font-mono whitespace-nowrap font-medium",
+                      isGeldi ? "text-emerald-800" : "text-slate-800"
+                    )}>
                       {formatSaatRange(r.saat, r.sure)}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
@@ -556,26 +605,70 @@ function ReservationGroups({
                         </td>
                       </>
                     )}
+                    {showCustomerNote && (
+                      <td className="px-4 py-2.5 max-w-xs">
+                        {r.musteriNotu ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs text-slate-700">
+                            <StickyNote className="h-3.5 w-3.5 text-amber-600" />
+                            {r.musteriNotu}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">-</span>
+                        )}
+                      </td>
+                    )}
                     <td className="px-4 py-2.5 text-right whitespace-nowrap">
                       {r.silindi ? (
-                        onRestore && (
-                          <Button variant="outline" size="sm" onClick={() => onRestore(r.id)}>
-                            <RotateCcw className="h-3.5 w-3.5 mr-1" />
-                            Geri Al
-                          </Button>
-                        )
-                      ) : (
                         <div className="flex gap-1.5 justify-end">
-                          {onComplete && (
+                          {onAddNote && (
                             <Button
                               variant="outline"
                               size="sm"
-                              className="text-emerald-700 border-emerald-200 hover:bg-emerald-50"
-                              onClick={() => onComplete(r)}
-                              title="Müşteri geldi"
+                              className="text-amber-700 border-amber-200 hover:bg-amber-50"
+                              onClick={() => onAddNote(r)}
+                              title="Müşteri notu"
                             >
-                              <Check className="h-3.5 w-3.5 mr-1" />
+                              <StickyNote className="h-3.5 w-3.5 mr-1" />
+                              {r.musteriNotu ? "Notu Düzenle" : "Not Ekle"}
+                            </Button>
+                          )}
+                          {onRestore && (
+                            <Button variant="outline" size="sm" onClick={() => onRestore(r.id)}>
+                              <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                              Geri Al
+                            </Button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex gap-1.5 justify-end items-center">
+                          {isGeldi ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-600 text-white">
+                              <CheckCircle2 className="h-3.5 w-3.5" />
                               Geldi
+                            </span>
+                          ) : (
+                            onComplete && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                                onClick={() => onComplete(r)}
+                                title="Müşteri geldi"
+                              >
+                                <Check className="h-3.5 w-3.5 mr-1" />
+                                Geldi
+                              </Button>
+                            )
+                          )}
+                          {isGeldi && onUncomplete && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-slate-600"
+                              onClick={() => onUncomplete(r.id)}
+                              title="Geldi'yi geri al"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
                             </Button>
                           )}
                           {onEdit && (
@@ -606,7 +699,8 @@ function ReservationGroups({
                       )}
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -634,6 +728,65 @@ function DurumBadge({ durum }: { durum: Durum }) {
     )
   }
   return <span className="text-xs text-muted-foreground">-</span>
+}
+
+function NoteDialog({
+  item,
+  onCancel,
+  onSave,
+}: {
+  item: Reservation
+  onCancel: () => void
+  onSave: (text: string) => void | Promise<void>
+}) {
+  const [text, setText] = useState(item.musteriNotu)
+  const [saving, setSaving] = useState(false)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl p-6 mx-4 w-full max-w-md">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+            <StickyNote className="w-5 h-5 text-amber-600" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-semibold text-slate-900 text-base">Müşteri Notu</h3>
+            <p className="text-sm text-slate-500 mt-0.5">
+              {formatTrDate(item.tarih)} {formatSaatRange(item.saat, item.sure)} —{" "}
+              <span className="font-medium text-slate-700">{item.telefon || item.not}</span>
+            </p>
+          </div>
+          <button onClick={onCancel} className="p-1 rounded-md hover:bg-slate-100 text-slate-400">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <textarea
+          autoFocus
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Bu müşteri ile ilgili not ekleyin (örn: tekrar gelecek, problemli vs.)"
+          rows={4}
+          maxLength={500}
+          className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+        />
+        <p className="text-xs text-muted-foreground mt-1 mb-4">{text.length}/500</p>
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" size="sm" onClick={onCancel} disabled={saving}>İptal</Button>
+          <Button
+            size="sm"
+            className="bg-amber-600 hover:bg-amber-700"
+            onClick={async () => {
+              setSaving(true)
+              await onSave(text)
+            }}
+            disabled={saving}
+          >
+            {saving ? "Kaydediliyor..." : "Kaydet"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function ConfirmDialog({
@@ -679,8 +832,8 @@ function ConfirmDialog({
         </div>
         <p className="text-xs text-slate-500 mb-5">
           {isComplete
-            ? "Kayıt 'Geldi' olarak işaretlenip listeden kaldırılacak."
-            : "Kayıt 'İptal' olarak işaretlenip listeden kaldırılacak."}
+            ? "Kayıt 'Geldi' olarak işaretlenip yeşil renkte kalacak."
+            : "Kayıt 'İptal' olarak işaretlenip Geçmiş sekmesine taşınacak."}
         </p>
         <div className="flex gap-2 justify-end">
           <Button variant="outline" size="sm" onClick={onCancel}>Vazgeç</Button>

@@ -3,10 +3,6 @@
     {
       "path": "/api/cron/daily-summary",
       "schedule": "30 23 * * *"
-    },
-    {
-      "path": "/api/cron/cleanup-rezervasyonlar",
-      "schedule": "0 1 1 * *"
     }
   ]
 }
