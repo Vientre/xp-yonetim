@@ -163,7 +163,37 @@ const hardDeleteSchema = z.object({
 const hardDeleteDateSchema = z.object({
   action: z.literal("hardDeleteDate"),
   tarih: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tarih YYYY-MM-DD olmalı"),
+  range: z.enum(["day", "week", "month"]).optional().default("day"),
 })
+
+function startOfWeekIso(iso: string): string {
+  const d = new Date(iso + "T00:00:00Z")
+  const dow = d.getUTCDay() // 0=Sunday
+  const offset = dow === 0 ? 6 : dow - 1 // days back to Monday
+  d.setUTCDate(d.getUTCDate() - offset)
+  return d.toISOString().slice(0, 10)
+}
+
+function endOfWeekIso(iso: string): string {
+  const d = new Date(startOfWeekIso(iso) + "T00:00:00Z")
+  d.setUTCDate(d.getUTCDate() + 6)
+  return d.toISOString().slice(0, 10)
+}
+
+function rowMatchesRange(
+  rowTarih: string,
+  range: "day" | "week" | "month",
+  refTarih: string
+): boolean {
+  if (range === "day") return rowTarih === refTarih
+  if (range === "week") {
+    const ws = startOfWeekIso(refTarih)
+    const we = endOfWeekIso(refTarih)
+    return rowTarih >= ws && rowTarih <= we
+  }
+  // month
+  return rowTarih.startsWith(refTarih.slice(0, 7))
+}
 
 const addNoteSchema = z.object({
   action: z.literal("addNote"),
@@ -378,6 +408,9 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.action === "hardDelete") {
+    if (user.role !== "admin") {
+      return NextResponse.json({ error: "Sadece yönetici silebilir" }, { status: 403 })
+    }
     const parsed = hardDeleteSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
@@ -406,28 +439,32 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.action === "hardDeleteDate") {
+    if (user.role !== "admin") {
+      return NextResponse.json({ error: "Sadece yönetici silebilir" }, { status: 403 })
+    }
     const parsed = hardDeleteDateSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
     }
-    const { tarih } = parsed.data
+    const { tarih, range } = parsed.data
 
     try {
       const rows = await getRows(TABS.RESERVATIONS)
       const indices: number[] = []
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i]
-        if (row[1] === tarih && isTruthyFlag(row[9])) {
+        const rowTarih = row[1] ?? ""
+        if (rowTarih && isTruthyFlag(row[9]) && rowMatchesRange(rowTarih, range, tarih)) {
           indices.push(i)
         }
       }
 
       if (indices.length === 0) {
-        return NextResponse.json({ ok: true, deleted: 0, tarih })
+        return NextResponse.json({ ok: true, deleted: 0, tarih, range })
       }
 
       await deleteRowsByIndices(TABS.RESERVATIONS, indices)
-      return NextResponse.json({ ok: true, deleted: indices.length, tarih })
+      return NextResponse.json({ ok: true, deleted: indices.length, tarih, range })
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Bilinmeyen hata"
       return NextResponse.json({ error: `Hata: ${msg}` }, { status: 500 })

@@ -43,6 +43,8 @@ type PendingAction = { item: Reservation; type: "delete" | "complete" }
 type PendingHardDelete =
   | { kind: "single"; item: Reservation }
   | { kind: "date"; tarih: string; gun: string; count: number }
+  | { kind: "week"; tarih: string; weekStart: string; weekEnd: string; count: number }
+  | { kind: "month"; tarih: string; yearMonth: string; count: number }
 
 const SURE_OPTIONS: { value: Sure; label: string }[] = [
   { value: 30, label: "30 dk (yarım saat)" },
@@ -91,6 +93,40 @@ function formatSure(min: number): string {
   if (min === 60) return "1 saat"
   if (min > 0) return `${min} dk`
   return ""
+}
+
+function startOfWeekIso(iso: string): string {
+  const d = new Date(iso + "T00:00:00Z")
+  const dow = d.getUTCDay()
+  const offset = dow === 0 ? 6 : dow - 1
+  d.setUTCDate(d.getUTCDate() - offset)
+  return d.toISOString().slice(0, 10)
+}
+
+function endOfWeekIso(iso: string): string {
+  const d = new Date(startOfWeekIso(iso) + "T00:00:00Z")
+  d.setUTCDate(d.getUTCDate() + 6)
+  return d.toISOString().slice(0, 10)
+}
+
+const TR_MONTHS_LONG = [
+  "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+  "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
+]
+
+function formatYearMonthLabel(yearMonth: string): string {
+  const [y, m] = yearMonth.split("-").map(Number)
+  if (!y || !m) return yearMonth
+  return `${TR_MONTHS_LONG[m - 1]} ${y}`
+}
+
+function formatWeekLabel(weekStart: string, weekEnd: string): string {
+  const [, ms, ds] = weekStart.split("-").map(Number)
+  const [, me, de] = weekEnd.split("-").map(Number)
+  if (ms === me) {
+    return `${ds}-${de} ${TR_MONTHS_LONG[(ms ?? 1) - 1]}`
+  }
+  return `${ds} ${TR_MONTHS_LONG[(ms ?? 1) - 1]} - ${de} ${TR_MONTHS_LONG[(me ?? 1) - 1]}`
 }
 
 function groupByDate(items: Reservation[]) {
@@ -263,10 +299,13 @@ export default function RezervasyonlarPage() {
     if (!hardDelete) return
     const target = hardDelete
     setHardDelete(null)
-    const payload =
-      target.kind === "single"
-        ? { action: "hardDelete", id: target.item.id }
-        : { action: "hardDeleteDate", tarih: target.tarih }
+    let payload: Record<string, unknown>
+    if (target.kind === "single") {
+      payload = { action: "hardDelete", id: target.item.id }
+    } else {
+      const range = target.kind === "date" ? "day" : target.kind
+      payload = { action: "hardDeleteDate", tarih: target.tarih, range }
+    }
     const res = await fetch("/api/rezervasyonlar", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -284,6 +323,19 @@ export default function RezervasyonlarPage() {
       toast.success(`${j?.deleted ?? 0} kayıt kalıcı silindi`)
     }
     await fetchAll()
+  }
+
+  function openHardDeleteWeek(tarih: string) {
+    const ws = startOfWeekIso(tarih)
+    const we = endOfWeekIso(tarih)
+    const count = deleted.filter((r) => r.tarih >= ws && r.tarih <= we).length
+    setHardDelete({ kind: "week", tarih, weekStart: ws, weekEnd: we, count })
+  }
+
+  function openHardDeleteMonth(tarih: string) {
+    const yearMonth = tarih.slice(0, 7)
+    const count = deleted.filter((r) => r.tarih.startsWith(yearMonth)).length
+    setHardDelete({ kind: "month", tarih, yearMonth, count })
   }
 
   async function uncomplete(id: string) {
@@ -444,10 +496,19 @@ export default function RezervasyonlarPage() {
             showCustomerNote
             onAddNote={(r) => setNoteEditing(r)}
             onRestore={me?.role === "admin" ? (id) => restore(id) : undefined}
-            onHardDelete={(r) => setHardDelete({ kind: "single", item: r })}
-            onHardDeleteDate={(tarih, gun, count) =>
-              setHardDelete({ kind: "date", tarih, gun, count })
+            onHardDelete={
+              me?.role === "admin"
+                ? (r) => setHardDelete({ kind: "single", item: r })
+                : undefined
             }
+            onHardDeleteDate={
+              me?.role === "admin"
+                ? (tarih, gun, count) =>
+                    setHardDelete({ kind: "date", tarih, gun, count })
+                : undefined
+            }
+            onHardDeleteWeek={me?.role === "admin" ? openHardDeleteWeek : undefined}
+            onHardDeleteMonth={me?.role === "admin" ? openHardDeleteMonth : undefined}
           />
         </TabsContent>
       </Tabs>
@@ -508,6 +569,8 @@ function ReservationGroups({
   onAddNote,
   onHardDelete,
   onHardDeleteDate,
+  onHardDeleteWeek,
+  onHardDeleteMonth,
 }: {
   loading: boolean
   items: Reservation[]
@@ -522,6 +585,8 @@ function ReservationGroups({
   onAddNote?: (r: Reservation) => void
   onHardDelete?: (r: Reservation) => void
   onHardDeleteDate?: (tarih: string, gun: string, count: number) => void
+  onHardDeleteWeek?: (tarih: string) => void
+  onHardDeleteMonth?: (tarih: string) => void
 }) {
   if (loading) {
     return (
@@ -557,7 +622,7 @@ function ReservationGroups({
               <span className="font-semibold text-sm text-blue-900">{formatTrDate(g.tarih)}</span>
               <span className="text-xs text-blue-700">— {g.gun}</span>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <span className="text-xs text-blue-700 font-medium">{g.items.length} kayıt</span>
               {onHardDeleteDate && (
                 <Button
@@ -569,6 +634,30 @@ function ReservationGroups({
                 >
                   <Trash className="h-3.5 w-3.5 mr-1" />
                   Günü Sil
+                </Button>
+              )}
+              {onHardDeleteWeek && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-red-700 border-red-300 hover:bg-red-50 h-7"
+                  onClick={() => onHardDeleteWeek(g.tarih)}
+                  title="Bu haftadaki tüm kayıtları kalıcı sil"
+                >
+                  <Trash className="h-3.5 w-3.5 mr-1" />
+                  Haftayı Sil
+                </Button>
+              )}
+              {onHardDeleteMonth && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-red-700 border-red-300 hover:bg-red-50 h-7"
+                  onClick={() => onHardDeleteMonth(g.tarih)}
+                  title="Bu aydaki tüm kayıtları kalıcı sil"
+                >
+                  <Trash className="h-3.5 w-3.5 mr-1" />
+                  Ayı Sil
                 </Button>
               )}
             </div>
@@ -813,8 +902,49 @@ function HardDeleteDialog({
   onCancel: () => void
   onConfirm: () => void
 }) {
-  const isDate = target.kind === "date"
-  const title = isDate ? "Günü kalıcı silmek istiyor musunuz?" : "Kaydı kalıcı silmek istiyor musunuz?"
+  const titleMap: Record<PendingHardDelete["kind"], string> = {
+    single: "Kaydı kalıcı silmek istiyor musunuz?",
+    date: "Günü kalıcı silmek istiyor musunuz?",
+    week: "Haftayı kalıcı silmek istiyor musunuz?",
+    month: "Ayı kalıcı silmek istiyor musunuz?",
+  }
+  const isBulk = target.kind !== "single"
+  const count = isBulk ? target.count : 1
+
+  let subtitle: React.ReactNode
+  if (target.kind === "single") {
+    subtitle = (
+      <>
+        {formatTrDate(target.item.tarih)} {formatSaatRange(target.item.saat, target.item.sure)} —{" "}
+        <span className="font-medium text-slate-700">
+          {target.item.kisiSayisi > 0 ? `${target.item.kisiSayisi} kişi` : (target.item.telefon || target.item.not)}
+        </span>
+      </>
+    )
+  } else if (target.kind === "date") {
+    subtitle = (
+      <>
+        <span className="font-medium text-slate-700">{formatTrDate(target.tarih)}</span> ({target.gun}) —{" "}
+        <span className="font-medium text-slate-700">{target.count} kayıt</span>
+      </>
+    )
+  } else if (target.kind === "week") {
+    subtitle = (
+      <>
+        <span className="font-medium text-slate-700">{formatWeekLabel(target.weekStart, target.weekEnd)}</span>{" "}
+        haftası —{" "}
+        <span className="font-medium text-slate-700">{target.count} kayıt</span>
+      </>
+    )
+  } else {
+    subtitle = (
+      <>
+        <span className="font-medium text-slate-700">{formatYearMonthLabel(target.yearMonth)}</span>{" "}
+        ayı —{" "}
+        <span className="font-medium text-slate-700">{target.count} kayıt</span>
+      </>
+    )
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
@@ -824,35 +954,26 @@ function HardDeleteDialog({
             <ShieldAlert className="w-5 h-5 text-red-600" />
           </div>
           <div className="flex-1">
-            <h3 className="font-semibold text-slate-900 text-base">{title}</h3>
-            <p className="text-sm text-slate-500 mt-0.5">
-              {isDate ? (
-                <>
-                  <span className="font-medium text-slate-700">{formatTrDate(target.tarih)}</span> ({target.gun}) —{" "}
-                  <span className="font-medium text-slate-700">{target.count} kayıt</span>
-                </>
-              ) : (
-                <>
-                  {formatTrDate(target.item.tarih)} {formatSaatRange(target.item.saat, target.item.sure)} —{" "}
-                  <span className="font-medium text-slate-700">
-                    {target.item.kisiSayisi > 0 ? `${target.item.kisiSayisi} kişi` : (target.item.telefon || target.item.not)}
-                  </span>
-                </>
-              )}
-            </p>
+            <h3 className="font-semibold text-slate-900 text-base">{titleMap[target.kind]}</h3>
+            <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>
           </div>
           <button onClick={onCancel} className="p-1 rounded-md hover:bg-slate-100 text-slate-400">
             <X className="w-4 h-4" />
           </button>
         </div>
         <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2 mb-5">
-          ⚠️ Bu işlem geri alınamaz. Kayıt{isDate ? "lar" : ""} Sheet&apos;ten tamamen silinecek.
+          ⚠️ Bu işlem geri alınamaz. Kayıt{isBulk ? "lar" : ""} Sheet&apos;ten tamamen silinecek.
         </p>
         <div className="flex gap-2 justify-end">
-          <Button variant="outline" size="sm" onClick={onCancel}>Vazgeç</Button>
-          <Button size="sm" className="bg-red-600 hover:bg-red-700" onClick={onConfirm}>
+          <Button variant="outline" size="sm" onClick={onCancel} disabled={count === 0}>Vazgeç</Button>
+          <Button
+            size="sm"
+            className="bg-red-600 hover:bg-red-700"
+            onClick={onConfirm}
+            disabled={count === 0}
+          >
             <Trash className="w-3.5 h-3.5 mr-1" />
-            {isDate ? `${target.count} kaydı sil` : "Kalıcı sil"}
+            {isBulk ? `${count} kaydı sil` : "Kalıcı sil"}
           </Button>
         </div>
       </div>
