@@ -14,7 +14,7 @@
 
 import { NextRequest, NextResponse, after } from "next/server"
 import { getAuthUser } from "@/lib/auth-utils"
-import { getRows, appendRow, updateRowByIndex, generateId } from "@/lib/sheets"
+import { getRows, appendRow, updateRowByIndex, deleteRowByIndex, deleteRowsByIndices, generateId } from "@/lib/sheets"
 import { TABS } from "@/lib/constants"
 import { sendWhatsAppMessage } from "@/lib/whatsapp"
 import { z } from "zod"
@@ -153,6 +153,16 @@ const uncompleteSchema = z.object({
 const restoreSchema = z.object({
   action: z.literal("restore"),
   id: z.string().min(1),
+})
+
+const hardDeleteSchema = z.object({
+  action: z.literal("hardDelete"),
+  id: z.string().min(1),
+})
+
+const hardDeleteDateSchema = z.object({
+  action: z.literal("hardDeleteDate"),
+  tarih: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tarih YYYY-MM-DD olmalı"),
 })
 
 const addNoteSchema = z.object({
@@ -365,6 +375,63 @@ export async function POST(req: NextRequest) {
     ])
 
     return NextResponse.json({ ok: true, id })
+  }
+
+  if (body.action === "hardDelete") {
+    const parsed = hardDeleteSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    }
+    const { id } = parsed.data
+
+    try {
+      const rows = await getRows(TABS.RESERVATIONS)
+      const idx = rows.findIndex((r) => r[0] === id)
+      if (idx === -1) return NextResponse.json({ error: "Kayıt bulunamadı" }, { status: 404 })
+
+      const row = rows[idx]
+      if (!isTruthyFlag(row[9])) {
+        return NextResponse.json(
+          { error: "Sadece geçmişteki kayıtlar kalıcı silinebilir" },
+          { status: 400 }
+        )
+      }
+
+      await deleteRowByIndex(TABS.RESERVATIONS, idx)
+      return NextResponse.json({ ok: true, id })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Bilinmeyen hata"
+      return NextResponse.json({ error: `Hata: ${msg}` }, { status: 500 })
+    }
+  }
+
+  if (body.action === "hardDeleteDate") {
+    const parsed = hardDeleteDateSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    }
+    const { tarih } = parsed.data
+
+    try {
+      const rows = await getRows(TABS.RESERVATIONS)
+      const indices: number[] = []
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i]
+        if (row[1] === tarih && isTruthyFlag(row[9])) {
+          indices.push(i)
+        }
+      }
+
+      if (indices.length === 0) {
+        return NextResponse.json({ ok: true, deleted: 0, tarih })
+      }
+
+      await deleteRowsByIndices(TABS.RESERVATIONS, indices)
+      return NextResponse.json({ ok: true, deleted: indices.length, tarih })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Bilinmeyen hata"
+      return NextResponse.json({ error: `Hata: ${msg}` }, { status: 500 })
+    }
   }
 
   if (body.action === "addNote") {

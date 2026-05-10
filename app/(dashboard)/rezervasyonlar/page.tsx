@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react"
 import {
   CalendarClock, Plus, Trash2, RefreshCw, AlertTriangle, X, RotateCcw, Phone,
-  StickyNote, Check, CheckCircle2, XCircle, Pencil, Users, Clock,
+  StickyNote, Check, CheckCircle2, XCircle, Pencil, Users, Clock, Trash, ShieldAlert,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,6 +39,10 @@ type Reservation = {
 type Me = { id: string; name: string; role: "admin" | "manager" | "staff" }
 
 type PendingAction = { item: Reservation; type: "delete" | "complete" }
+
+type PendingHardDelete =
+  | { kind: "single"; item: Reservation }
+  | { kind: "date"; tarih: string; gun: string; count: number }
 
 const SURE_OPTIONS: { value: Sure; label: string }[] = [
   { value: 30, label: "30 dk (yarım saat)" },
@@ -130,6 +134,7 @@ export default function RezervasyonlarPage() {
   const [submitting, setSubmitting] = useState(false)
   const [pending, setPending] = useState<PendingAction | null>(null)
   const [noteEditing, setNoteEditing] = useState<Reservation | null>(null)
+  const [hardDelete, setHardDelete] = useState<PendingHardDelete | null>(null)
 
   async function fetchMe() {
     try {
@@ -251,6 +256,33 @@ export default function RezervasyonlarPage() {
       return
     }
     toast.success("Geri alındı")
+    await fetchAll()
+  }
+
+  async function confirmHardDelete() {
+    if (!hardDelete) return
+    const target = hardDelete
+    setHardDelete(null)
+    const payload =
+      target.kind === "single"
+        ? { action: "hardDelete", id: target.item.id }
+        : { action: "hardDeleteDate", tarih: target.tarih }
+    const res = await fetch("/api/rezervasyonlar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      toast.error(typeof j?.error === "string" ? j.error : "Silinemedi")
+      return
+    }
+    if (target.kind === "single") {
+      toast.success("Kayıt kalıcı silindi")
+    } else {
+      const j = await res.json().catch(() => ({}))
+      toast.success(`${j?.deleted ?? 0} kayıt kalıcı silindi`)
+    }
     await fetchAll()
   }
 
@@ -412,6 +444,10 @@ export default function RezervasyonlarPage() {
             showCustomerNote
             onAddNote={(r) => setNoteEditing(r)}
             onRestore={me?.role === "admin" ? (id) => restore(id) : undefined}
+            onHardDelete={(r) => setHardDelete({ kind: "single", item: r })}
+            onHardDeleteDate={(tarih, gun, count) =>
+              setHardDelete({ kind: "date", tarih, gun, count })
+            }
           />
         </TabsContent>
       </Tabs>
@@ -421,6 +457,14 @@ export default function RezervasyonlarPage() {
           pending={pending}
           onCancel={() => setPending(null)}
           onConfirm={confirmAction}
+        />
+      )}
+
+      {hardDelete && (
+        <HardDeleteDialog
+          target={hardDelete}
+          onCancel={() => setHardDelete(null)}
+          onConfirm={confirmHardDelete}
         />
       )}
 
@@ -462,6 +506,8 @@ function ReservationGroups({
   onDelete,
   onRestore,
   onAddNote,
+  onHardDelete,
+  onHardDeleteDate,
 }: {
   loading: boolean
   items: Reservation[]
@@ -474,6 +520,8 @@ function ReservationGroups({
   onDelete?: (r: Reservation) => void
   onRestore?: (id: string) => void
   onAddNote?: (r: Reservation) => void
+  onHardDelete?: (r: Reservation) => void
+  onHardDeleteDate?: (tarih: string, gun: string, count: number) => void
 }) {
   if (loading) {
     return (
@@ -509,7 +557,21 @@ function ReservationGroups({
               <span className="font-semibold text-sm text-blue-900">{formatTrDate(g.tarih)}</span>
               <span className="text-xs text-blue-700">— {g.gun}</span>
             </div>
-            <span className="text-xs text-blue-700 font-medium">{g.items.length} kayıt</span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-blue-700 font-medium">{g.items.length} kayıt</span>
+              {onHardDeleteDate && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-red-700 border-red-300 hover:bg-red-50 h-7"
+                  onClick={() => onHardDeleteDate(g.tarih, g.gun, g.items.length)}
+                  title="Bu güne ait tüm kayıtları kalıcı sil"
+                >
+                  <Trash className="h-3.5 w-3.5 mr-1" />
+                  Günü Sil
+                </Button>
+              )}
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -638,6 +700,18 @@ function ReservationGroups({
                               Geri Al
                             </Button>
                           )}
+                          {onHardDelete && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-red-700 border-red-300 hover:bg-red-50"
+                              onClick={() => onHardDelete(r)}
+                              title="Kalıcı sil"
+                            >
+                              <Trash className="h-3.5 w-3.5 mr-1" />
+                              Sil
+                            </Button>
+                          )}
                         </div>
                       ) : (
                         <div className="flex gap-1.5 justify-end items-center">
@@ -728,6 +802,62 @@ function DurumBadge({ durum }: { durum: Durum }) {
     )
   }
   return <span className="text-xs text-muted-foreground">-</span>
+}
+
+function HardDeleteDialog({
+  target,
+  onCancel,
+  onConfirm,
+}: {
+  target: PendingHardDelete
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  const isDate = target.kind === "date"
+  const title = isDate ? "Günü kalıcı silmek istiyor musunuz?" : "Kaydı kalıcı silmek istiyor musunuz?"
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl p-6 mx-4 w-full max-w-sm">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+            <ShieldAlert className="w-5 h-5 text-red-600" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-semibold text-slate-900 text-base">{title}</h3>
+            <p className="text-sm text-slate-500 mt-0.5">
+              {isDate ? (
+                <>
+                  <span className="font-medium text-slate-700">{formatTrDate(target.tarih)}</span> ({target.gun}) —{" "}
+                  <span className="font-medium text-slate-700">{target.count} kayıt</span>
+                </>
+              ) : (
+                <>
+                  {formatTrDate(target.item.tarih)} {formatSaatRange(target.item.saat, target.item.sure)} —{" "}
+                  <span className="font-medium text-slate-700">
+                    {target.item.kisiSayisi > 0 ? `${target.item.kisiSayisi} kişi` : (target.item.telefon || target.item.not)}
+                  </span>
+                </>
+              )}
+            </p>
+          </div>
+          <button onClick={onCancel} className="p-1 rounded-md hover:bg-slate-100 text-slate-400">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2 mb-5">
+          ⚠️ Bu işlem geri alınamaz. Kayıt{isDate ? "lar" : ""} Sheet&apos;ten tamamen silinecek.
+        </p>
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" size="sm" onClick={onCancel}>Vazgeç</Button>
+          <Button size="sm" className="bg-red-600 hover:bg-red-700" onClick={onConfirm}>
+            <Trash className="w-3.5 h-3.5 mr-1" />
+            {isDate ? `${target.count} kaydı sil` : "Kalıcı sil"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function NoteDialog({
