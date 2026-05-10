@@ -12,10 +12,11 @@
  * etiket değişimi, veri pozisyonu aynı.
  */
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse, after } from "next/server"
 import { getAuthUser } from "@/lib/auth-utils"
 import { getRows, appendRow, updateRowByIndex, generateId } from "@/lib/sheets"
 import { TABS } from "@/lib/constants"
+import { sendWhatsAppMessage } from "@/lib/whatsapp"
 import { z } from "zod"
 
 const TR_DAYS = ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"]
@@ -27,6 +28,27 @@ function getTrDayName(isoDate: string): string {
 
 function isTruthyFlag(v: string | undefined): boolean {
   return (v ?? "").trim().toLowerCase() === "true"
+}
+
+function formatTrDateForMsg(iso: string): string {
+  if (!iso) return ""
+  const [y, m, d] = iso.split("-")
+  return `${d}.${m}.${y}`
+}
+
+function addMinutesToHHmm(hhmm: string, minutes: number): string {
+  if (!hhmm || !/^\d{2}:\d{2}$/.test(hhmm)) return ""
+  const [h, m] = hhmm.split(":").map(Number)
+  const total = h * 60 + m + minutes
+  const eh = Math.floor(total / 60) % 24
+  const em = ((total % 60) + 60) % 60
+  return `${String(eh).padStart(2, "0")}:${String(em).padStart(2, "0")}`
+}
+
+function formatSureLabel(min: number): string {
+  if (min === 30) return "yarım saat"
+  if (min === 60) return "1 saat"
+  return `${min} dk`
 }
 
 type Durum = "" | "geldi" | "iptal"
@@ -216,6 +238,24 @@ export async function POST(req: NextRequest) {
       "false", "", "", "", "",
       String(kisiSayisi), String(sure), "",
     ])
+
+    // Yeni rezervasyon WhatsApp bildirimi — response'tan sonra arka planda gider
+    const endTime = addMinutesToHHmm(saat, sure + 15)
+    const saatRange = endTime ? `${saat}-${endTime}` : saat
+    const waText = [
+      `🎯 *Yeni LaserTag Rezervasyonu*`,
+      ``,
+      `📅 ${formatTrDateForMsg(tarih)} (${gun})`,
+      `⏰ ${saatRange} (${formatSureLabel(sure)})`,
+      `👥 ${kisiSayisi} kişi`,
+      `📞 ${telefon.trim()}`,
+      ...(not.trim() ? [`📝 ${not.trim()}`] : []),
+      ``,
+      `_Ekleyen: ${user.name}_`,
+    ].join("\n")
+    after(async () => {
+      await sendWhatsAppMessage(waText)
+    })
 
     return NextResponse.json(
       {
