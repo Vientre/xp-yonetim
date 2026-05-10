@@ -1,17 +1,38 @@
 /**
  * CallMeBot WhatsApp utility — free WhatsApp messaging via api.callmebot.com
  *
- * Required env vars:
- *   CALLMEBOT_PHONE   — your WhatsApp phone (with country code, no +) — e.g. "905321234567"
- *   CALLMEBOT_API_KEY — API key returned by the bot (or group key for groups)
+ * Env vars (her biri opsiyonel):
+ *   CALLMEBOT_RECIPIENTS — virgülle ayrılmış "phone:key" çiftleri.
+ *     Örnek: "905321234567:1234567,905329876543:7654321"
+ *   CALLMEBOT_PHONE + CALLMEBOT_API_KEY — tek alıcı için (backward compat).
+ *     RECIPIENTS verilmediğinde devreye girer.
  *
- * Setup için: README'de talimat var; özetle bot'a (+34 644 51 95 23)
- *   - Kişisel: "I allow callmebot to send me messages" yazıp API key alınır
- *   - Grup: bot'u gruba ekle, davet linkini kişisel olarak gönder, grup API key'i alınır
+ * Setup: ekibinizdeki herkes kendi telefonundan +34 644 51 95 23'e
+ *   "I allow callmebot to send me messages" yazıp 7 haneli key alır.
+ *   Tüm phone:key çiftlerini virgülle birleştirip CALLMEBOT_RECIPIENTS olarak kaydedin.
  */
 
-const PHONE = () => process.env.CALLMEBOT_PHONE
-const API_KEY = () => process.env.CALLMEBOT_API_KEY
+type Recipient = { phone: string; apiKey: string }
+
+function getRecipients(): Recipient[] {
+  const list: Recipient[] = []
+
+  const recipientsRaw = process.env.CALLMEBOT_RECIPIENTS ?? ""
+  if (recipientsRaw.trim()) {
+    for (const pair of recipientsRaw.split(",")) {
+      const [phone, apiKey] = pair.split(":").map((s) => s.trim())
+      if (phone && apiKey) list.push({ phone, apiKey })
+    }
+  }
+
+  if (list.length === 0) {
+    const phone = process.env.CALLMEBOT_PHONE?.trim()
+    const apiKey = process.env.CALLMEBOT_API_KEY?.trim()
+    if (phone && apiKey) list.push({ phone, apiKey })
+  }
+
+  return list
+}
 
 /**
  * Send a WhatsApp message via CallMeBot.
@@ -20,24 +41,22 @@ const API_KEY = () => process.env.CALLMEBOT_API_KEY
  *
  * WhatsApp formatting: *bold*, _italic_, ~strikethrough~, ```mono```
  */
-export type WhatsAppResult =
-  | { ok: true; status: number }
-  | { ok: false; reason: "no-config" | "http-error" | "exception"; status?: number; body?: string; error?: string }
+export type WhatsAppSendResult =
+  | { ok: true; status: number; phone: string }
+  | { ok: false; reason: "http-error" | "exception"; phone: string; status?: number; body?: string; error?: string }
 
-export async function sendWhatsAppMessage(text: string): Promise<WhatsAppResult> {
-  const phone = PHONE()
-  const apiKey = API_KEY()
-  if (!phone || !apiKey) {
-    console.warn("[WhatsApp] skipped: CALLMEBOT_PHONE or CALLMEBOT_API_KEY not set")
-    return { ok: false, reason: "no-config" }
-  }
+export type WhatsAppResult = {
+  recipients: number
+  results: WhatsAppSendResult[]
+  skipped?: "no-config"
+}
 
+async function sendOne(text: string, r: Recipient): Promise<WhatsAppSendResult> {
   const url =
     `https://api.callmebot.com/whatsapp.php` +
-    `?phone=${encodeURIComponent(phone)}` +
+    `?phone=${encodeURIComponent(r.phone)}` +
     `&text=${encodeURIComponent(text)}` +
-    `&apikey=${encodeURIComponent(apiKey)}`
-
+    `&apikey=${encodeURIComponent(r.apiKey)}`
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), 8000)
@@ -45,14 +64,29 @@ export async function sendWhatsAppMessage(text: string): Promise<WhatsAppResult>
     clearTimeout(timer)
     const body = await res.text().catch(() => "")
     if (!res.ok) {
-      console.error("[WhatsApp] HTTP failed:", res.status, body.slice(0, 300))
-      return { ok: false, reason: "http-error", status: res.status, body: body.slice(0, 300) }
+      console.error("[WhatsApp]", r.phone, "HTTP failed:", res.status, body.slice(0, 200))
+      return { ok: false, reason: "http-error", phone: r.phone, status: res.status, body: body.slice(0, 200) }
     }
-    console.log("[WhatsApp] sent, status=", res.status)
-    return { ok: true, status: res.status }
+    console.log("[WhatsApp] sent to", r.phone, "status=", res.status)
+    return { ok: true, status: res.status, phone: r.phone }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
-    console.error("[WhatsApp] exception:", msg)
-    return { ok: false, reason: "exception", error: msg }
+    console.error("[WhatsApp]", r.phone, "exception:", msg)
+    return { ok: false, reason: "exception", phone: r.phone, error: msg }
   }
+}
+
+export async function sendWhatsAppMessage(text: string): Promise<WhatsAppResult> {
+  const recipients = getRecipients()
+  if (recipients.length === 0) {
+    console.warn("[WhatsApp] skipped: no recipients configured")
+    return { recipients: 0, results: [], skipped: "no-config" }
+  }
+
+  // Sıralı gönderim — CallMeBot rate limit'ine takılmamak için
+  const results: WhatsAppSendResult[] = []
+  for (const r of recipients) {
+    results.push(await sendOne(text, r))
+  }
+  return { recipients: recipients.length, results }
 }
