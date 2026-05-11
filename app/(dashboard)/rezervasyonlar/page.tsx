@@ -156,7 +156,7 @@ function computePhoneStats(
     total: matching.length,
     geldi: matching.filter((r) => r.durum === "geldi").length,
     gelmedi: matching.filter((r) => r.durum === "gelmedi").length,
-    iptal: matching.filter((r) => r.silindi || r.durum === "iptal").length,
+    iptal: matching.filter((r) => r.durum === "iptal").length,
   }
 }
 

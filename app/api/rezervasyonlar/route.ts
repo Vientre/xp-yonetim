@@ -223,6 +223,8 @@ async function applyStatus(
     durum: Durum
     deleted: boolean
     user?: { id: string; name: string }
+    /** Silme sırasında mevcut "geldi"/"gelmedi" durumu varsa onu korur. */
+    preserveExistingDurum?: boolean
   }
 ) {
   const rows = await getRows(TABS.RESERVATIONS)
@@ -234,6 +236,14 @@ async function applyStatus(
     return { error: "Silinmiş kayıt değiştirilemez", status: 400 as const }
   }
 
+  let finalDurum: Durum = opts.durum
+  if (opts.preserveExistingDurum) {
+    const existing = parseDurum(row[13])
+    if (existing === "geldi" || existing === "gelmedi") {
+      finalDurum = existing
+    }
+  }
+
   const silmeTarihi = opts.deleted && opts.user ? new Date().toISOString() : ""
 
   await updateRowByIndex(TABS.RESERVATIONS, idx, [
@@ -243,7 +253,7 @@ async function applyStatus(
     opts.deleted && opts.user ? opts.user.id : "",
     opts.deleted && opts.user ? opts.user.name : "",
     silmeTarihi,
-    opts.durum,
+    finalDurum,
     row[14] ?? "", row[15] ?? "", row[16] ?? "",
   ])
 
@@ -251,7 +261,7 @@ async function applyStatus(
     ok: true,
     id,
     silindi: opts.deleted,
-    durum: opts.durum,
+    durum: finalDurum,
     silenId: opts.deleted && opts.user ? opts.user.id : "",
     silenAd: opts.deleted && opts.user ? opts.user.name : "",
     silmeTarihi,
@@ -348,6 +358,9 @@ export async function POST(req: NextRequest) {
           "iptal",
         deleted: body.action === "delete",
         user: body.action === "delete" ? user : undefined,
+        // Sil yapılırken eğer kayıt zaten "geldi" veya "gelmedi" işaretliyse
+        // o durum korunur (geçmiş tab'ında doğru renkte görünsün diye)
+        preserveExistingDurum: body.action === "delete",
       })
       if ("error" in result) {
         return NextResponse.json({ error: result.error }, { status: result.status })
@@ -409,10 +422,15 @@ export async function POST(req: NextRequest) {
     if (idx === -1) return NextResponse.json({ error: "Bulunamadı" }, { status: 404 })
 
     const row = rows[idx]
+    // Geri alırken: iptal'i temizle, geldi/gelmedi'yi koru
+    const existingDurum = parseDurum(row[13])
+    const restoredDurum: Durum =
+      existingDurum === "geldi" || existingDurum === "gelmedi" ? existingDurum : ""
+
     await updateRowByIndex(TABS.RESERVATIONS, idx, [
       row[0], row[1], row[2], row[3], row[4], row[5],
       row[6], row[7], row[8],
-      "false", "", "", "", "",
+      "false", "", "", "", restoredDurum,
       row[14] ?? "", row[15] ?? "", row[16] ?? "",
     ])
 
