@@ -129,6 +129,37 @@ function formatWeekLabel(weekStart: string, weekEnd: string): string {
   return `${ds} ${TR_MONTHS_LONG[(ms ?? 1) - 1]} - ${de} ${TR_MONTHS_LONG[(me ?? 1) - 1]}`
 }
 
+/** Strip non-digits and take last 10 chars to compare regardless of "+90", "0", spaces, etc. */
+function normalizePhone(s: string): string {
+  return (s ?? "").replace(/\D/g, "").slice(-10)
+}
+
+type PhoneStats = {
+  total: number
+  geldi: number
+  gelmedi: number
+  iptal: number
+}
+
+function computePhoneStats(
+  items: Reservation[],
+  rawPhone: string,
+  excludeId?: string
+): PhoneStats | null {
+  const norm = normalizePhone(rawPhone)
+  if (norm.length < 7) return null
+  const matching = items.filter((r) => {
+    if (excludeId && r.id === excludeId) return false
+    return normalizePhone(r.telefon) === norm
+  })
+  return {
+    total: matching.length,
+    geldi: matching.filter((r) => r.durum === "geldi").length,
+    gelmedi: matching.filter((r) => r.durum === "gelmedi").length,
+    iptal: matching.filter((r) => r.silindi || r.durum === "iptal").length,
+  }
+}
+
 function groupByDate(items: Reservation[]) {
   const groups: { tarih: string; gun: string; items: Reservation[] }[] = []
   for (const r of items) {
@@ -359,6 +390,10 @@ export default function RezervasyonlarPage() {
 
   const active = useMemo(() => items.filter((r) => !r.silindi), [items])
   const deleted = useMemo(() => items.filter((r) => r.silindi), [items])
+  const phoneInfo = useMemo(
+    () => computePhoneStats(items, form.telefon, editingId ?? undefined),
+    [items, form.telefon, editingId]
+  )
 
   return (
     <div className="space-y-6">
@@ -439,6 +474,26 @@ export default function RezervasyonlarPage() {
                   placeholder="05xx ..."
                   required
                 />
+                {phoneInfo && phoneInfo.total > 0 && (
+                  <div className="flex items-start gap-2 text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded-md px-2.5 py-1.5 mt-1">
+                    <span className="text-base leading-none">🔁</span>
+                    <div className="flex-1">
+                      <p className="font-medium">
+                        Bu müşteri {phoneInfo.total + 1}. defa kayıt yaptırıyor
+                      </p>
+                      <p className="text-amber-700">
+                        {phoneInfo.geldi > 0 && <>✓ {phoneInfo.geldi} kez geldi</>}
+                        {phoneInfo.geldi > 0 && (phoneInfo.gelmedi > 0 || phoneInfo.iptal > 0) && " · "}
+                        {phoneInfo.gelmedi > 0 && <>✗ {phoneInfo.gelmedi} kez gelmedi</>}
+                        {phoneInfo.gelmedi > 0 && phoneInfo.iptal > 0 && " · "}
+                        {phoneInfo.iptal > 0 && <>🗑️ {phoneInfo.iptal} kez iptal</>}
+                        {phoneInfo.geldi === 0 && phoneInfo.gelmedi === 0 && phoneInfo.iptal === 0 && (
+                          <>Geçmiş kaydı var, durumu henüz işaretlenmemiş</>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground">Not</label>
