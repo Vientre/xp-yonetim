@@ -56,6 +56,28 @@ function todayISO() {
   return new Date().toISOString().split("T")[0]
 }
 
+function isoOffset(days: number, base?: string): string {
+  const d = new Date((base ?? todayISO()) + "T00:00:00Z")
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+function reservationMinutes(saat: string): number {
+  if (!saat || !/^\d{2}:\d{2}$/.test(saat)) return -1
+  const [h, m] = saat.split(":").map(Number)
+  return h * 60 + m
+}
+
+/** İki rezervasyonun zaman aralıklarının çakışıp çakışmadığını kontrol eder. Bitiş saati = başlangıç + süre + 15dk buffer. */
+function timesOverlap(saatA: string, sureA: number, saatB: string, sureB: number): boolean {
+  const aStart = reservationMinutes(saatA)
+  const bStart = reservationMinutes(saatB)
+  if (aStart < 0 || bStart < 0) return false
+  const aEnd = aStart + (sureA || 0) + 15
+  const bEnd = bStart + (sureB || 0) + 15
+  return aStart < bEnd && bStart < aEnd
+}
+
 function formatTrDate(iso: string) {
   if (!iso) return ""
   const [y, m, d] = iso.split("-")
@@ -395,6 +417,54 @@ export default function RezervasyonlarPage() {
     [items, form.telefon, editingId]
   )
 
+  const noshowWarning = useMemo(() => {
+    if (!phoneInfo || phoneInfo.gelmedi === 0) return null
+    if (phoneInfo.total === 1 && phoneInfo.gelmedi === 1) {
+      return { rate: 100, text: "Geçen sefer gelmedi" }
+    }
+    const rate = phoneInfo.gelmedi / phoneInfo.total
+    if (phoneInfo.total >= 2 && rate >= 0.5) {
+      return {
+        rate: Math.round(rate * 100),
+        text: `%${Math.round(rate * 100)} gelmeme oranı (${phoneInfo.gelmedi}/${phoneInfo.total})`,
+      }
+    }
+    return null
+  }, [phoneInfo])
+
+  const summary = useMemo(() => {
+    const today = todayISO()
+    const tomorrow = isoOffset(1, today)
+    const ws = startOfWeekIso(today)
+    const we = endOfWeekIso(today)
+    const tally = (pred: (r: Reservation) => boolean) => {
+      const filtered = active.filter(pred)
+      return {
+        count: filtered.length,
+        kisi: filtered.reduce((s, r) => s + (r.kisiSayisi || 0), 0),
+      }
+    }
+    return {
+      today: tally((r) => r.tarih === today),
+      tomorrow: tally((r) => r.tarih === tomorrow),
+      week: tally((r) => r.tarih >= ws && r.tarih <= we),
+    }
+  }, [active])
+
+  const dateReservations = useMemo(() => {
+    if (!form.tarih) return []
+    return active
+      .filter((r) => r.tarih === form.tarih && (!editingId || r.id !== editingId))
+      .sort((a, b) => a.saat.localeCompare(b.saat))
+  }, [active, form.tarih, editingId])
+
+  const conflicts = useMemo(() => {
+    if (!form.saat) return []
+    return dateReservations.filter((r) =>
+      timesOverlap(form.saat, form.sure, r.saat, r.sure)
+    )
+  }, [dateReservations, form.saat, form.sure])
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -414,6 +484,12 @@ export default function RezervasyonlarPage() {
             Yeni Rezervasyon
           </Button>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <SummaryCard label="Bugün" count={summary.today.count} kisi={summary.today.kisi} accent="blue" />
+        <SummaryCard label="Yarın" count={summary.tomorrow.count} kisi={summary.tomorrow.kisi} accent="purple" />
+        <SummaryCard label="Bu hafta" count={summary.week.count} kisi={summary.week.kisi} accent="emerald" />
       </div>
 
       {showForm && (
@@ -494,6 +570,14 @@ export default function RezervasyonlarPage() {
                     </div>
                   </div>
                 )}
+                {noshowWarning && (
+                  <div className="flex items-start gap-2 text-xs bg-red-50 border border-red-300 text-red-900 rounded-md px-2.5 py-1.5 mt-1.5">
+                    <span className="text-base leading-none">🚨</span>
+                    <p className="font-semibold flex-1">
+                      Bu müşterinin {noshowWarning.text}
+                    </p>
+                  </div>
+                )}
               </div>
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground">Not</label>
@@ -503,6 +587,46 @@ export default function RezervasyonlarPage() {
                   placeholder="(opsiyonel)"
                 />
               </div>
+              {form.tarih && dateReservations.length > 0 && (
+                <div className="sm:col-span-2 lg:col-span-3 bg-slate-50 border border-slate-200 rounded-md p-3 space-y-1.5">
+                  <p className="text-xs font-medium text-slate-700">
+                    📅 {formatTrDate(form.tarih)} tarihindeki diğer rezervasyonlar ({dateReservations.length}):
+                  </p>
+                  <ul className="space-y-1">
+                    {dateReservations.map((r) => {
+                      const isConflict = conflicts.some((c) => c.id === r.id)
+                      return (
+                        <li
+                          key={r.id}
+                          className={cn(
+                            "text-xs flex items-center gap-2 px-2 py-1 rounded",
+                            isConflict
+                              ? "bg-red-100 text-red-900 border border-red-300"
+                              : "text-slate-600"
+                          )}
+                        >
+                          {isConflict && <span>⚠️</span>}
+                          <span className="font-mono font-medium">
+                            {formatSaatRange(r.saat, r.sure)}
+                          </span>
+                          <span>·</span>
+                          <span>{r.kisiSayisi} kişi</span>
+                          <span>·</span>
+                          <span>{formatSure(r.sure)}</span>
+                          {r.telefon && (<><span>·</span><span className="opacity-75">{r.telefon}</span></>)}
+                          {r.durum === "geldi" && <span className="ml-auto text-emerald-700">✓ geldi</span>}
+                          {r.durum === "gelmedi" && <span className="ml-auto text-red-700">✗ gelmedi</span>}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                  {conflicts.length > 0 && (
+                    <p className="text-xs text-red-700 font-medium mt-1.5">
+                      ⚠️ Seçtiğiniz {formatSaatRange(form.saat, form.sure)} aralığı yukarıdaki kırmızı kayıt(lar) ile çakışıyor.
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="sm:col-span-2 lg:col-span-3 flex items-center justify-between gap-2 pt-1">
                 <p className="text-xs text-muted-foreground">
                   {form.saat && Number.isFinite(parseInt(form.kisiSayisi, 10)) ? (
@@ -611,6 +735,42 @@ export default function RezervasyonlarPage() {
           }}
         />
       )}
+    </div>
+  )
+}
+
+function SummaryCard({
+  label,
+  count,
+  kisi,
+  accent,
+}: {
+  label: string
+  count: number
+  kisi: number
+  accent: "blue" | "purple" | "emerald"
+}) {
+  const accentMap = {
+    blue: { bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-900", muted: "text-blue-700" },
+    purple: { bg: "bg-purple-50", border: "border-purple-200", text: "text-purple-900", muted: "text-purple-700" },
+    emerald: { bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-900", muted: "text-emerald-700" },
+  }
+  const c = accentMap[accent]
+  return (
+    <div className={cn("rounded-lg border px-4 py-3 flex items-center justify-between", c.bg, c.border)}>
+      <div>
+        <p className={cn("text-xs font-medium", c.muted)}>{label}</p>
+        <p className={cn("text-2xl font-bold tabular-nums leading-tight", c.text)}>
+          {count}
+        </p>
+      </div>
+      <div className="text-right">
+        <p className={cn("text-xs", c.muted)}>rezervasyon</p>
+        <p className={cn("text-xs font-medium", c.text)}>
+          <Users className="inline h-3 w-3 mr-0.5 -mt-0.5" />
+          {kisi} kişi
+        </p>
+      </div>
     </div>
   )
 }
