@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
-type Durum = "" | "geldi" | "iptal"
+type Durum = "" | "geldi" | "gelmedi" | "iptal"
 type Sure = 30 | 45 | 60
 
 type Reservation = {
@@ -38,7 +38,7 @@ type Reservation = {
 
 type Me = { id: string; name: string; role: "admin" | "manager" | "staff" }
 
-type PendingAction = { item: Reservation; type: "delete" | "complete" }
+type PendingAction = { item: Reservation; type: "delete" | "complete" | "noshow" }
 
 type PendingHardDelete =
   | { kind: "single"; item: Reservation }
@@ -277,7 +277,11 @@ export default function RezervasyonlarPage() {
       toast.error(typeof j?.error === "string" ? j.error : "İşlem başarısız")
       return
     }
-    toast.success(type === "complete" ? "Müşteri geldi olarak işaretlendi" : "Rezervasyon silindi")
+    toast.success(
+      type === "complete" ? "Müşteri geldi olarak işaretlendi" :
+      type === "noshow" ? "Müşteri gelmedi olarak işaretlendi" :
+      "Rezervasyon silindi"
+    )
     await fetchAll()
   }
 
@@ -483,6 +487,7 @@ export default function RezervasyonlarPage() {
             showAuditAdd
             onEdit={(r) => openEditForm(r)}
             onComplete={(r) => setPending({ item: r, type: "complete" })}
+            onNoshow={(r) => setPending({ item: r, type: "noshow" })}
             onUncomplete={(id) => uncomplete(id)}
             onDelete={(r) => setPending({ item: r, type: "delete" })}
           />
@@ -563,6 +568,7 @@ function ReservationGroups({
   showCustomerNote = false,
   onEdit,
   onComplete,
+  onNoshow,
   onUncomplete,
   onDelete,
   onRestore,
@@ -579,6 +585,7 @@ function ReservationGroups({
   showCustomerNote?: boolean
   onEdit?: (r: Reservation) => void
   onComplete?: (r: Reservation) => void
+  onNoshow?: (r: Reservation) => void
   onUncomplete?: (id: string) => void
   onDelete?: (r: Reservation) => void
   onRestore?: (id: string) => void
@@ -688,17 +695,26 @@ function ReservationGroups({
               <tbody>
                 {g.items.map((r) => {
                   const isGeldi = r.durum === "geldi" && !r.silindi
+                  const isGelmedi = r.durum === "gelmedi" && !r.silindi
                   return (
                   <tr
                     key={r.id}
                     className={cn(
                       "border-b last:border-0",
-                      isGeldi ? "bg-emerald-50 hover:bg-emerald-100" : "hover:bg-gray-50"
+                      isGeldi
+                        ? "bg-emerald-50 hover:bg-emerald-100"
+                        : isGelmedi
+                          ? "bg-red-50 hover:bg-red-100"
+                          : "hover:bg-gray-50"
                     )}
                   >
                     <td className={cn(
                       "px-4 py-2.5 font-mono whitespace-nowrap font-medium",
-                      isGeldi ? "text-emerald-800" : "text-slate-800"
+                      isGeldi
+                        ? "text-emerald-800"
+                        : isGelmedi
+                          ? "text-red-800"
+                          : "text-slate-800"
                     )}>
                       {formatSaatRange(r.saat, r.sure)}
                     </td>
@@ -809,27 +825,46 @@ function ReservationGroups({
                               <CheckCircle2 className="h-3.5 w-3.5" />
                               Geldi
                             </span>
+                          ) : isGelmedi ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-red-600 text-white">
+                              <XCircle className="h-3.5 w-3.5" />
+                              Gelmedi
+                            </span>
                           ) : (
-                            onComplete && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-emerald-700 border-emerald-200 hover:bg-emerald-50"
-                                onClick={() => onComplete(r)}
-                                title="Müşteri geldi"
-                              >
-                                <Check className="h-3.5 w-3.5 mr-1" />
-                                Geldi
-                              </Button>
-                            )
+                            <>
+                              {onComplete && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                                  onClick={() => onComplete(r)}
+                                  title="Müşteri geldi"
+                                >
+                                  <Check className="h-3.5 w-3.5 mr-1" />
+                                  Geldi
+                                </Button>
+                              )}
+                              {onNoshow && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-red-700 border-red-200 hover:bg-red-50"
+                                  onClick={() => onNoshow(r)}
+                                  title="Müşteri gelmedi"
+                                >
+                                  <XCircle className="h-3.5 w-3.5 mr-1" />
+                                  Gelmedi
+                                </Button>
+                              )}
+                            </>
                           )}
-                          {isGeldi && onUncomplete && (
+                          {(isGeldi || isGelmedi) && onUncomplete && (
                             <Button
                               variant="outline"
                               size="sm"
                               className="text-slate-600"
                               onClick={() => onUncomplete(r.id)}
-                              title="Geldi'yi geri al"
+                              title="Geri al"
                             >
                               <RotateCcw className="h-3.5 w-3.5" />
                             </Button>
@@ -879,6 +914,14 @@ function DurumBadge({ durum }: { durum: Durum }) {
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
         <CheckCircle2 className="h-3 w-3" />
         Geldi
+      </span>
+    )
+  }
+  if (durum === "gelmedi") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+        <XCircle className="h-3 w-3" />
+        Gelmedi
       </span>
     )
   }
@@ -1050,26 +1093,37 @@ function ConfirmDialog({
   onConfirm: () => void
 }) {
   const isComplete = pending.type === "complete"
+  const isNoshow = pending.type === "noshow"
   const { item } = pending
+
+  const title =
+    isComplete ? "Müşteri geldi mi?" :
+    isNoshow ? "Müşteri gelmedi mi?" :
+    "Rezervasyonu sil?"
+  const desc =
+    isComplete ? "Kayıt 'Geldi' olarak işaretlenip yeşil renkte kalacak." :
+    isNoshow ? "Kayıt 'Gelmedi' olarak işaretlenip kırmızı renkte kalacak." :
+    "Kayıt 'İptal' olarak işaretlenip Geçmiş sekmesine taşınacak."
+
+  const accentBg = isComplete ? "bg-emerald-100" : "bg-red-100"
+  const accentIcon = isComplete ? "text-emerald-600" : "text-red-600"
+  const accentBtn = isComplete ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl p-6 mx-4 w-full max-w-sm">
         <div className="flex items-start gap-3 mb-4">
-          <div className={cn(
-            "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
-            isComplete ? "bg-emerald-100" : "bg-red-100"
-          )}>
+          <div className={cn("w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0", accentBg)}>
             {isComplete ? (
-              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              <CheckCircle2 className={cn("w-5 h-5", accentIcon)} />
+            ) : isNoshow ? (
+              <XCircle className={cn("w-5 h-5", accentIcon)} />
             ) : (
-              <AlertTriangle className="w-5 h-5 text-red-600" />
+              <AlertTriangle className={cn("w-5 h-5", accentIcon)} />
             )}
           </div>
           <div className="flex-1">
-            <h3 className="font-semibold text-slate-900 text-base">
-              {isComplete ? "Müşteri geldi mi?" : "Rezervasyonu sil?"}
-            </h3>
+            <h3 className="font-semibold text-slate-900 text-base">{title}</h3>
             <p className="text-sm text-slate-500 mt-0.5">
               {formatTrDate(item.tarih)} {formatSaatRange(item.saat, item.sure)} —{" "}
               <span className="font-medium text-slate-700">
@@ -1081,21 +1135,13 @@ function ConfirmDialog({
             <X className="w-4 h-4" />
           </button>
         </div>
-        <p className="text-xs text-slate-500 mb-5">
-          {isComplete
-            ? "Kayıt 'Geldi' olarak işaretlenip yeşil renkte kalacak."
-            : "Kayıt 'İptal' olarak işaretlenip Geçmiş sekmesine taşınacak."}
-        </p>
+        <p className="text-xs text-slate-500 mb-5">{desc}</p>
         <div className="flex gap-2 justify-end">
           <Button variant="outline" size="sm" onClick={onCancel}>Vazgeç</Button>
-          <Button
-            size="sm"
-            className={cn(
-              isComplete ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"
-            )}
-            onClick={onConfirm}
-          >
-            {isComplete ? (<><Check className="w-3.5 h-3.5 mr-1" />Geldi</>) : (<><Trash2 className="w-3.5 h-3.5 mr-1" />Sil</>)}
+          <Button size="sm" className={accentBtn} onClick={onConfirm}>
+            {isComplete ? (<><Check className="w-3.5 h-3.5 mr-1" />Geldi</>) :
+             isNoshow ? (<><XCircle className="w-3.5 h-3.5 mr-1" />Gelmedi</>) :
+             (<><Trash2 className="w-3.5 h-3.5 mr-1" />Sil</>)}
           </Button>
         </div>
       </div>

@@ -51,7 +51,7 @@ function formatSureLabel(min: number): string {
   return `${min} dk`
 }
 
-type Durum = "" | "geldi" | "iptal"
+type Durum = "" | "geldi" | "gelmedi" | "iptal"
 type Sure = 30 | 45 | 60
 
 type Reservation = {
@@ -76,7 +76,7 @@ type Reservation = {
 
 function parseDurum(v: string | undefined): Durum {
   const x = (v ?? "").trim().toLowerCase()
-  if (x === "geldi" || x === "iptal") return x
+  if (x === "geldi" || x === "gelmedi" || x === "iptal") return x
   return ""
 }
 
@@ -147,6 +147,11 @@ const completeSchema = z.object({
 
 const uncompleteSchema = z.object({
   action: z.literal("uncomplete"),
+  id: z.string().min(1),
+})
+
+const noshowSchema = z.object({
+  action: z.literal("noshow"),
   id: z.string().min(1),
 })
 
@@ -318,9 +323,15 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  if (body.action === "complete" || body.action === "uncomplete" || body.action === "delete") {
+  if (
+    body.action === "complete" ||
+    body.action === "noshow" ||
+    body.action === "uncomplete" ||
+    body.action === "delete"
+  ) {
     const schema =
       body.action === "complete" ? completeSchema :
+      body.action === "noshow" ? noshowSchema :
       body.action === "uncomplete" ? uncompleteSchema :
       deleteSchema
     const parsed = schema.safeParse(body)
@@ -332,6 +343,7 @@ export async function POST(req: NextRequest) {
       const result = await applyStatus(parsed.data.id, {
         durum:
           body.action === "complete" ? "geldi" :
+          body.action === "noshow" ? "gelmedi" :
           body.action === "uncomplete" ? "" :
           "iptal",
         deleted: body.action === "delete",
