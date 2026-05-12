@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   PlusCircle, Trash2, Save, ClipboardList,
-  TrendingUp, TrendingDown, AlertCircle, Pencil, X,
+  TrendingUp, TrendingDown, AlertCircle, Pencil, X, ArrowLeftRight,
 } from "lucide-react"
 import { toast } from "sonner"
 import { formatCurrency, formatDate } from "@/lib/utils"
@@ -35,6 +35,8 @@ interface Closing {
   cardIncome: number
   ticketIncome: number
   ticketCardIncome: number
+  kasadanBankaya: number
+  bankadanKasaya: number
   notes: string
   expenses: Array<{ id: string; categoryId: string; category: { name: string; color: string }; amount: number; description: string; paymentMethod?: string }>
 }
@@ -53,6 +55,8 @@ const formSchema = z.object({
   cardIncome: z.string().default("0"),
   ticketIncome: z.string().default("0"),
   ticketCardIncome: z.string().default("0"),
+  kasadanBankaya: z.string().default("0"),
+  bankadanKasaya: z.string().default("0"),
   notes: z.string().optional(),
   expenses: z.array(expenseRow),
 })
@@ -108,6 +112,7 @@ export default function DailyEntryPage() {
     reset({
       businessId: "", date: format(new Date(), "yyyy-MM-dd"),
       cashIncome: "", cardIncome: "", ticketIncome: "", ticketCardIncome: "",
+      kasadanBankaya: "", bankadanKasaya: "",
       notes: "", expenses: [],
     })
   }
@@ -124,6 +129,8 @@ export default function DailyEntryPage() {
       cardIncome: String(data.cardIncome || ""),
       ticketIncome: String(data.ticketIncome || ""),
       ticketCardIncome: String(data.ticketCardIncome || ""),
+      kasadanBankaya: String(data.kasadanBankaya || ""),
+      bankadanKasaya: String(data.bankadanKasaya || ""),
       notes: data.notes ?? "",
       expenses: (data.expenses ?? []).map((e: any) => ({
         categoryId: e.categoryId,
@@ -300,6 +307,45 @@ export default function DailyEntryPage() {
                   <div className="mt-2 text-right text-sm font-semibold text-green-600">
                     Toplam Gelir: {formatCurrency(totalIncome)}
                   </div>
+                </div>
+
+                {/* Transfer */}
+                <div>
+                  <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                    <ArrowLeftRight className="h-4 w-4 text-violet-500" />
+                    Kasa ↔ Banka Transfer
+                    <span className="text-xs font-normal text-muted-foreground">(opsiyonel)</span>
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs flex items-center gap-1">
+                        <span>Kasadan → Bankaya (₺)</span>
+                        <span className="text-[10px] text-violet-600">para yatırma</span>
+                      </Label>
+                      <Input
+                        type="number" step="0.01" min="0"
+                        placeholder="0.00"
+                        {...register("kasadanBankaya")}
+                        className="text-right"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs flex items-center gap-1">
+                        <span>Bankadan → Kasaya (₺)</span>
+                        <span className="text-[10px] text-violet-600">para çekme</span>
+                      </Label>
+                      <Input
+                        type="number" step="0.01" min="0"
+                        placeholder="0.00"
+                        {...register("bankadanKasaya")}
+                        className="text-right"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2 bg-violet-50 border border-violet-100 rounded px-2.5 py-1.5">
+                    💡 Transferler gelir/gider değildir — sadece Kasa ↔ Banka arasında iç hareketler.
+                    Aylık Tablo'da Kasa ve Banka bakiyelerini etkiler.
+                  </p>
                 </div>
 
                 {/* Giderler */}

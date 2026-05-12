@@ -21,6 +21,8 @@ const patchSchema = z.object({
   cardIncome: z.string().default("0"),
   ticketIncome: z.string().default("0"),
   ticketCardIncome: z.string().default("0"),
+  kasadanBankaya: z.string().default("0"),
+  bankadanKasaya: z.string().default("0"),
   notes: z.string().optional().default(""),
   expenses: z.array(expenseRow).optional().default([]),
 })
@@ -72,6 +74,8 @@ export async function GET(
     netAmount: parseFloat(row[8] || "0"),
     notes: row[9] ?? "",
     ticketCardIncome: parseFloat(row[13] || "0"),
+    kasadanBankaya: parseFloat(row[14] || "0"),
+    bankadanKasaya: parseFloat(row[15] || "0"),
     expenses,
   })
 }
@@ -96,22 +100,25 @@ export async function PATCH(
   const parsed = patchSchema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
-  const { date: newDate, cashIncome, cardIncome, ticketIncome, ticketCardIncome, notes, expenses } = parsed.data
+  const { date: newDate, cashIncome, cardIncome, ticketIncome, ticketCardIncome, kasadanBankaya, bankadanKasaya, notes, expenses } = parsed.data
   const date = newDate ?? result.row[1]
   const cash = parseFloat(cashIncome) || 0
   const card = parseFloat(cardIncome) || 0
   const ticketCash = parseFloat(ticketIncome) || 0
   const ticketCard = parseFloat(ticketCardIncome) || 0
+  const kb = parseFloat(kasadanBankaya) || 0
+  const bk = parseFloat(bankadanKasaya) || 0
   const totalIncome = cash + card + ticketCash + ticketCard
   const totalExpense = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0)
   const net = totalIncome - totalExpense
 
-  // GunlukGelir — 14 sütun (biletKart dahil)
+  // GunlukGelir — 16 sütun (transferler dahil)
   await updateRowByIndex(TABS.DAILY_INCOME, result.index, [
     id, date, businessId, cash, card, ticketCash,
     totalIncome, totalExpense, net,
     notes ?? "", user.id, user.name, result.row[12] ?? new Date().toISOString(),
     ticketCard,
+    kb, bk,
   ])
 
   // Replace expenses
@@ -140,6 +147,7 @@ export async function PATCH(
     business: { id: businessId, name: getBusinessName(businessId) },
     cashIncome: cash, cardIncome: card, ticketIncome: ticketCash,
     ticketCardIncome: ticketCard,
+    kasadanBankaya: kb, bankadanKasaya: bk,
     totalIncome, totalExpense, netAmount: net,
     notes: notes ?? "",
     expenses: expenses.map((e) => {

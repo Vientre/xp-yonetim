@@ -26,6 +26,8 @@ type DayEntry = {
   cardIncome: number
   ticketIncome: number
   ticketCardIncome: number
+  kasadanBankaya: number
+  bankadanKasaya: number
   totalIncome: number
   totalExpense: number
   netAmount: number
@@ -164,8 +166,10 @@ export default function AylikTabloPage() {
       startBalance: kasaStart,
       startDate: baslangicTarihi,
       year, month, daysCount,
-      getInflow: (e) => (e.cashIncome || 0) + (e.ticketIncome || 0),
-      getOutflow: (e) => expenseTotalByMethod(e, "nakit"),
+      // Kasa girişi = nakit + biletNakit + bankadan kasaya transfer
+      getInflow: (e) => (e.cashIncome || 0) + (e.ticketIncome || 0) + (e.bankadanKasaya || 0),
+      // Kasa çıkışı = nakit giderler + kasadan bankaya transfer
+      getOutflow: (e) => expenseTotalByMethod(e, "nakit") + (e.kasadanBankaya || 0),
     })
   }, [entries, kasaStart, baslangicTarihi, year, month, daysCount])
 
@@ -175,8 +179,10 @@ export default function AylikTabloPage() {
       startBalance: bankaStart,
       startDate: baslangicTarihi,
       year, month, daysCount,
-      getInflow: (e) => (e.cardIncome || 0) + (e.ticketCardIncome || 0),
-      getOutflow: (e) => expenseTotalByMethod(e, "banka"),
+      // Banka girişi = kart + biletKart + kasadan bankaya transfer
+      getInflow: (e) => (e.cardIncome || 0) + (e.ticketCardIncome || 0) + (e.kasadanBankaya || 0),
+      // Banka çıkışı = banka giderler + bankadan kasaya transfer
+      getOutflow: (e) => expenseTotalByMethod(e, "banka") + (e.bankadanKasaya || 0),
     })
   }, [entries, bankaStart, baslangicTarihi, year, month, daysCount])
 

@@ -1,18 +1,16 @@
 /**
  * Daily Finance Entries API
  *
- * Google Sheet: "GunlukGelir" tab
- * Columns: id | tarih | isletme | nakit | kart | biletNakit | toplamGelir | toplamGider | net | notlar | girenKisiId | girenKisiAdi | olusturmaTarihi | biletKart
- * Index:    0  |   1   |    2   |   3   |   4  |     5      |      6      |      7      |  8  |    9   |     10      |      11      |       12         |    13
+ * Google Sheet: "GunlukGelir" tab — 16 sütun (A-P)
+ * Cols: id | tarih | isletme | nakit | kart | biletNakit | toplamGelir | toplamGider | net | notlar | girenKisiId | girenKisiAdi | olusturmaTarihi | biletKart | kasadanBankaya | bankadanKasaya
+ * Idx:  0  |   1   |    2   |   3   |   4  |     5      |      6      |      7      |  8  |    9   |     10      |      11      |       12         |    13    |      14         |       15
  *
- * (Eski "bilet" sütunu artık "biletNakit" anlamına gelir — kasa girişi.
- *  Yeni "biletKart" 13. sütuna eklendi — banka girişi.)
+ * Google Sheet: "Giderler" tab — 7 sütun
+ * Cols: id | gelirKayitId | kategoriId | kategoriAdi | aciklama | tutar | odemeTipi
+ * Idx:  0  |      1       |     2      |      3      |     4    |   5   |     6
  *
- * Google Sheet: "Giderler" tab
- * Columns: id | gelirKayitId | kategoriId | kategoriAdi | aciklama | tutar | odemeTipi
- * Index:   0  |      1       |     2      |      3      |     4    |   5   |     6
- *
- * (odemeTipi = "nakit" | "banka". Eski kayıtlar default "nakit" kabul edilir.)
+ * Transfer alanları (kasadanBankaya, bankadanKasaya) = kasa/banka iç hareketleri.
+ * Gelir/gider toplamlarına dahil DEĞİLDİR, sadece kasa/banka running balance'da etkilidir.
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -36,6 +34,8 @@ const bodySchema = z.object({
   cardIncome: z.string().default("0"),
   ticketIncome: z.string().default("0"),       // bilet (nakit)
   ticketCardIncome: z.string().default("0"),   // bilet (kart)
+  kasadanBankaya: z.string().default("0"),     // transfer: kasadan bankaya
+  bankadanKasaya: z.string().default("0"),     // transfer: bankadan kasaya
   notes: z.string().optional().default(""),
   expenses: z.array(expenseRow).optional().default([]),
 })
@@ -66,6 +66,8 @@ function parseGelirRow(row: string[]) {
     status: "CLOSED",
     createdAt: row[12] ?? "",
     ticketCardIncome: parseFloat(row[13] || "0"),
+    kasadanBankaya: parseFloat(row[14] || "0"),
+    bankadanKasaya: parseFloat(row[15] || "0"),
   }
 }
 
@@ -148,7 +150,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
 
-  const { businessId, date, cashIncome, cardIncome, ticketIncome, ticketCardIncome, notes, expenses } = parsed.data
+  const { businessId, date, cashIncome, cardIncome, ticketIncome, ticketCardIncome, kasadanBankaya, bankadanKasaya, notes, expenses } = parsed.data
 
   if (!hasBusinessAccess(user, businessId)) {
     return NextResponse.json({ error: "Bu işletmeye erişim yok" }, { status: 403 })
@@ -168,6 +170,8 @@ export async function POST(req: NextRequest) {
   const card = parseFloat(cardIncome) || 0
   const ticketCash = parseFloat(ticketIncome) || 0
   const ticketCard = parseFloat(ticketCardIncome) || 0
+  const kb = parseFloat(kasadanBankaya) || 0
+  const bk = parseFloat(bankadanKasaya) || 0
   const totalIncome = cash + card + ticketCash + ticketCard
   const totalExpense = expenses.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0)
   const net = totalIncome - totalExpense
@@ -175,12 +179,13 @@ export async function POST(req: NextRequest) {
   const id = generateId()
   const createdAt = new Date().toISOString()
 
-  // GunlukGelir — 14 sütun (0-13)
+  // GunlukGelir — 16 sütun (0-15)
   await appendRow(TABS.DAILY_INCOME, [
     id, date, businessId, cash, card, ticketCash,
     totalIncome, totalExpense, net,
     notes ?? "", user.id, user.name, createdAt,
     ticketCard,
+    kb, bk,
   ])
 
   // Giderler — 7 sütun, odemeTipi dahil
@@ -240,6 +245,8 @@ export async function POST(req: NextRequest) {
       cardIncome: card,
       ticketIncome: ticketCash,
       ticketCardIncome: ticketCard,
+      kasadanBankaya: kb,
+      bankadanKasaya: bk,
       totalIncome,
       totalExpense,
       netAmount: net,
