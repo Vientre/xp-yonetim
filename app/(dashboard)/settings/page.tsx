@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Settings, Save, Plus, Trash2, Building2 } from "lucide-react"
+import { Settings, Save, Plus, Trash2, Building2, Wallet } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 
@@ -79,6 +79,7 @@ export default function SettingsPage() {
       <Tabs defaultValue="general">
         <TabsList>
           <TabsTrigger value="general">Genel</TabsTrigger>
+          <TabsTrigger value="balances">Kasa & Banka</TabsTrigger>
           <TabsTrigger value="categories">Gider Kategorileri</TabsTrigger>
           <TabsTrigger value="businesses">İşletmeler</TabsTrigger>
         </TabsList>
@@ -170,6 +171,74 @@ export default function SettingsPage() {
               <Button onClick={saveSettings} disabled={loading}>
                 <Save className="h-4 w-4 mr-2" />
                 {loading ? "Kaydediliyor..." : "Ayarları Kaydet"}
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Kasa & Banka Başlangıç Bakiyeleri */}
+        <TabsContent value="balances" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Wallet className="h-4 w-4" />
+                Başlangıç Bakiyeleri
+              </CardTitle>
+              <CardDescription>
+                Her işletme için kasa ve banka başlangıç bakiyesini girin.
+                Belirtilen tarihten itibaren günlük gelir/giderler bu bakiyelerin üzerine eklenir.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {businesses.map((biz) => {
+                const kasaKey = `kasaBaslangic_${biz.id}`
+                const bankaKey = `bankaBaslangic_${biz.id}`
+                const tarihKey = `bakiyeTarihi_${biz.id}`
+                return (
+                  <div key={biz.id} className="p-4 border rounded-lg space-y-3">
+                    <p className="font-semibold text-sm text-slate-800">{biz.name}</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Kasa Başlangıç (₺)</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={settings[kasaKey] ?? ""}
+                          onChange={(e) => setSettings((s: any) => ({ ...s, [kasaKey]: e.target.value }))}
+                          className="text-right"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Banka Başlangıç (₺)</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={settings[bankaKey] ?? ""}
+                          onChange={(e) => setSettings((s: any) => ({ ...s, [bankaKey]: e.target.value }))}
+                          className="text-right"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Başlangıç Tarihi</Label>
+                        <Input
+                          type="date"
+                          value={settings[tarihKey] ?? new Date().toISOString().slice(0, 10)}
+                          onChange={(e) => setSettings((s: any) => ({ ...s, [tarihKey]: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+              <p className="text-xs text-muted-foreground bg-blue-50 border border-blue-200 rounded p-3">
+                💡 Başlangıç tarihinden önceki günlük kayıtlar hesaba dahil edilmez.
+                Tarihi bugün olarak bırakırsanız, bugünden itibaren toplam tutulmaya başlanır.
+              </p>
+              <Button onClick={saveSettings} disabled={loading}>
+                <Save className="h-4 w-4 mr-2" />
+                {loading ? "Kaydediliyor..." : "Bakiyeleri Kaydet"}
               </Button>
             </CardContent>
           </Card>
