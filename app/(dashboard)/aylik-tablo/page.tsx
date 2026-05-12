@@ -100,7 +100,10 @@ export default function AylikTabloPage() {
   // Başlangıç bakiye bilgisi
   const kasaStart = parseFloat(settings[`kasaBaslangic_${businessId}`] ?? "0") || 0
   const bankaStart = parseFloat(settings[`bankaBaslangic_${businessId}`] ?? "0") || 0
-  const baslangicTarihi = settings[`bakiyeTarihi_${businessId}`] ?? ""
+  // Tarih boşsa ama bakiye girilmişse, bugünü varsayılan kabul et
+  const rawTarih = settings[`bakiyeTarihi_${businessId}`] ?? ""
+  const hasBalance = kasaStart !== 0 || bankaStart !== 0
+  const baslangicTarihi = rawTarih || (hasBalance ? new Date().toISOString().slice(0, 10) : "")
 
   const fetchEntries = useCallback(async () => {
     setLoading(true)

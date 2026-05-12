@@ -32,7 +32,14 @@ export default function SettingsPage() {
       fetch("/api/expense-categories").then((r) => r.json()),
       fetch("/api/businesses").then((r) => r.json()),
     ]).then(([s, c, b]) => {
-      setSettings(s)
+      // Her işletme için bakiyeTarihi yoksa bugünü default olarak state'e koy
+      const today = new Date().toISOString().slice(0, 10)
+      const enhanced = { ...s }
+      for (const biz of b) {
+        const key = `bakiyeTarihi_${biz.id}`
+        if (!enhanced[key]) enhanced[key] = today
+      }
+      setSettings(enhanced)
       setCategories(c)
       setBusinesses(b)
     }).finally(() => setFetching(false))
