@@ -12,6 +12,7 @@ const expenseRow = z.object({
   categoryId: z.string().min(1),
   amount: z.string(),
   description: z.string().optional().default(""),
+  paymentMethod: z.string().optional().default("nakit"),
 })
 
 const patchSchema = z.object({
@@ -19,9 +20,16 @@ const patchSchema = z.object({
   cashIncome: z.string().default("0"),
   cardIncome: z.string().default("0"),
   ticketIncome: z.string().default("0"),
+  ticketCardIncome: z.string().default("0"),
   notes: z.string().optional().default(""),
   expenses: z.array(expenseRow).optional().default([]),
 })
+
+function normalizePaymentMethod(v: string | undefined): "nakit" | "banka" {
+  const x = (v ?? "").trim().toLowerCase()
+  if (x === "banka" || x === "card" || x === "kart") return "banka"
+  return "nakit"
+}
 
 export async function GET(
   _req: NextRequest,
@@ -46,6 +54,7 @@ export async function GET(
         category: { id: r[2], name: cat?.name ?? r[3] ?? r[2], color: cat?.color ?? "#6366f1" },
         description: r[4] ?? "",
         amount: parseFloat(r[5] || "0"),
+        paymentMethod: normalizePaymentMethod(r[6]),
       }
     })
 
@@ -62,6 +71,7 @@ export async function GET(
     totalExpense: parseFloat(row[7] || "0"),
     netAmount: parseFloat(row[8] || "0"),
     notes: row[9] ?? "",
+    ticketCardIncome: parseFloat(row[13] || "0"),
     expenses,
   })
 }
@@ -86,23 +96,25 @@ export async function PATCH(
   const parsed = patchSchema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
-  const { date: newDate, cashIncome, cardIncome, ticketIncome, notes, expenses } = parsed.data
+  const { date: newDate, cashIncome, cardIncome, ticketIncome, ticketCardIncome, notes, expenses } = parsed.data
   const date = newDate ?? result.row[1]
   const cash = parseFloat(cashIncome) || 0
   const card = parseFloat(cardIncome) || 0
-  const ticket = parseFloat(ticketIncome) || 0
-  const totalIncome = cash + card + ticket
+  const ticketCash = parseFloat(ticketIncome) || 0
+  const ticketCard = parseFloat(ticketCardIncome) || 0
+  const totalIncome = cash + card + ticketCash + ticketCard
   const totalExpense = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0)
   const net = totalIncome - totalExpense
 
-  // Update GunlukGelir row
+  // GunlukGelir — 14 sütun (biletKart dahil)
   await updateRowByIndex(TABS.DAILY_INCOME, result.index, [
-    id, date, businessId, cash, card, ticket,
+    id, date, businessId, cash, card, ticketCash,
     totalIncome, totalExpense, net,
     notes ?? "", user.id, user.name, result.row[12] ?? new Date().toISOString(),
+    ticketCard,
   ])
 
-  // Replace expenses: delete old, insert new
+  // Replace expenses
   const giderRows = await getRows(TABS.EXPENSES)
   const oldIndices = giderRows
     .map((r, i) => ({ r, i }))
@@ -119,13 +131,15 @@ export async function PATCH(
       cat?.name ?? expense.categoryId,
       expense.description ?? "",
       parseFloat(expense.amount) || 0,
+      normalizePaymentMethod(expense.paymentMethod),
     ])
   }
 
   return NextResponse.json({
     id, date, businessId,
     business: { id: businessId, name: getBusinessName(businessId) },
-    cashIncome: cash, cardIncome: card, ticketIncome: ticket,
+    cashIncome: cash, cardIncome: card, ticketIncome: ticketCash,
+    ticketCardIncome: ticketCard,
     totalIncome, totalExpense, netAmount: net,
     notes: notes ?? "",
     expenses: expenses.map((e) => {
@@ -135,6 +149,7 @@ export async function PATCH(
         category: { id: e.categoryId, name: cat?.name ?? e.categoryId, color: cat?.color ?? "#6366f1" },
         amount: parseFloat(e.amount) || 0,
         description: e.description ?? "",
+        paymentMethod: normalizePaymentMethod(e.paymentMethod),
       }
     }),
   })

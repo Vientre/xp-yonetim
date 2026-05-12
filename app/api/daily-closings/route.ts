@@ -2,18 +2,23 @@
  * Daily Finance Entries API
  *
  * Google Sheet: "GunlukGelir" tab
- * Columns: id | tarih | isletme | nakit | kart | bilet | toplamGelir | toplamGider | net | notlar | girenKisiId | girenKisiAdi | olusturmaTarihi
- * Index:    0  |   1   |    2   |   3   |   4  |   5   |      6      |      7      |  8  |    9   |     10      |      11      |       12
+ * Columns: id | tarih | isletme | nakit | kart | biletNakit | toplamGelir | toplamGider | net | notlar | girenKisiId | girenKisiAdi | olusturmaTarihi | biletKart
+ * Index:    0  |   1   |    2   |   3   |   4  |     5      |      6      |      7      |  8  |    9   |     10      |      11      |       12         |    13
+ *
+ * (Eski "bilet" sütunu artık "biletNakit" anlamına gelir — kasa girişi.
+ *  Yeni "biletKart" 13. sütuna eklendi — banka girişi.)
  *
  * Google Sheet: "Giderler" tab
- * Columns: id | gelirKayitId | kategoriId | kategoriAdi | aciklama | tutar
- * Index:   0  |      1       |     2      |      3      |     4    |   5
+ * Columns: id | gelirKayitId | kategoriId | kategoriAdi | aciklama | tutar | odemeTipi
+ * Index:   0  |      1       |     2      |      3      |     4    |   5   |     6
+ *
+ * (odemeTipi = "nakit" | "banka". Eski kayıtlar default "nakit" kabul edilir.)
  */
 
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthUser, hasBusinessAccess, getAccessibleBusinessIds } from "@/lib/auth-utils"
 import { getRows, appendRow, generateId } from "@/lib/sheets"
-import { TABS, EXPENSE_CATEGORIES, BUSINESSES, getCategoryById, getBusinessName } from "@/lib/constants"
+import { TABS, getCategoryById, getBusinessName } from "@/lib/constants"
 import { sendTelegramMessage, tl, trDate } from "@/lib/telegram"
 import { z } from "zod"
 
@@ -21,7 +26,7 @@ const expenseRow = z.object({
   categoryId: z.string().min(1, "Kategori seçin"),
   amount: z.string().refine((v) => !isNaN(parseFloat(v)) && parseFloat(v) >= 0, "Geçerli tutar"),
   description: z.string().optional().default(""),
-  paymentMethod: z.string().optional(),
+  paymentMethod: z.string().optional().default("nakit"),
 })
 
 const bodySchema = z.object({
@@ -29,10 +34,18 @@ const bodySchema = z.object({
   date: z.string().min(1, "Tarih seçin"),
   cashIncome: z.string().default("0"),
   cardIncome: z.string().default("0"),
-  ticketIncome: z.string().default("0"),
+  ticketIncome: z.string().default("0"),       // bilet (nakit)
+  ticketCardIncome: z.string().default("0"),   // bilet (kart)
   notes: z.string().optional().default(""),
   expenses: z.array(expenseRow).optional().default([]),
 })
+
+/** Normalize various payment-method inputs to canonical "nakit" | "banka". */
+function normalizePaymentMethod(v: string | undefined): "nakit" | "banka" {
+  const x = (v ?? "").trim().toLowerCase()
+  if (x === "banka" || x === "card" || x === "kart") return "banka"
+  return "nakit"
+}
 
 function parseGelirRow(row: string[]) {
   const businessId = row[2] ?? ""
@@ -52,6 +65,7 @@ function parseGelirRow(row: string[]) {
     enteredBy: { id: row[10] ?? "", name: row[11] ?? "" },
     status: "CLOSED",
     createdAt: row[12] ?? "",
+    ticketCardIncome: parseFloat(row[13] || "0"),
   }
 }
 
@@ -92,14 +106,13 @@ export async function GET(req: NextRequest) {
     entries = entries.filter((e) => e.businessId === businessId)
   }
 
-  // Date filters (ISO date strings compare correctly as strings)
+  // Date filters
   if (from) entries = entries.filter((e) => e.date >= from)
   if (to) entries = entries.filter((e) => e.date <= to)
 
-  // Sort newest first, then limit
   entries = entries.sort((a, b) => b.date.localeCompare(a.date)).slice(0, limit)
 
-  // Attach expenses
+  // Attach expenses with paymentMethod
   const result = entries.map((entry) => {
     const expenses = giderRows
       .filter((row) => row[1] === entry.id)
@@ -116,6 +129,7 @@ export async function GET(req: NextRequest) {
           },
           description: row[4] ?? "",
           amount: parseFloat(row[5] || "0"),
+          paymentMethod: normalizePaymentMethod(row[6]),
         }
       })
     return { ...entry, expenses }
@@ -134,13 +148,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
 
-  const { businessId, date, cashIncome, cardIncome, ticketIncome, notes, expenses } = parsed.data
+  const { businessId, date, cashIncome, cardIncome, ticketIncome, ticketCardIncome, notes, expenses } = parsed.data
 
   if (!hasBusinessAccess(user, businessId)) {
     return NextResponse.json({ error: "Bu işletmeye erişim yok" }, { status: 403 })
   }
 
-  // Check for duplicate (same business + same date)
+  // Duplicate check
   const existingRows = await getRows(TABS.DAILY_INCOME)
   const duplicate = existingRows.find((r) => r[2] === businessId && r[1] === date)
   if (duplicate) {
@@ -152,22 +166,24 @@ export async function POST(req: NextRequest) {
 
   const cash = parseFloat(cashIncome) || 0
   const card = parseFloat(cardIncome) || 0
-  const ticket = parseFloat(ticketIncome) || 0
-  const totalIncome = cash + card + ticket
+  const ticketCash = parseFloat(ticketIncome) || 0
+  const ticketCard = parseFloat(ticketCardIncome) || 0
+  const totalIncome = cash + card + ticketCash + ticketCard
   const totalExpense = expenses.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0)
   const net = totalIncome - totalExpense
 
   const id = generateId()
   const createdAt = new Date().toISOString()
 
-  // Write to GunlukGelir tab
+  // GunlukGelir — 14 sütun (0-13)
   await appendRow(TABS.DAILY_INCOME, [
-    id, date, businessId, cash, card, ticket,
+    id, date, businessId, cash, card, ticketCash,
     totalIncome, totalExpense, net,
     notes ?? "", user.id, user.name, createdAt,
+    ticketCard,
   ])
 
-  // Write each expense to Giderler tab
+  // Giderler — 7 sütun, odemeTipi dahil
   for (const expense of expenses) {
     const cat = getCategoryById(expense.categoryId)
     await appendRow(TABS.EXPENSES, [
@@ -177,20 +193,21 @@ export async function POST(req: NextRequest) {
       cat?.name ?? expense.categoryId,
       expense.description ?? "",
       parseFloat(expense.amount) || 0,
+      normalizePaymentMethod(expense.paymentMethod),
     ])
   }
 
-  // ─── Telegram notification (fire-and-forget) ─────────────────────────────
+  // Telegram bildirimi
   const bizName = getBusinessName(businessId)
   const expenseLines = expenses.length > 0
     ? expenses.map((e) => {
         const cat = getCategoryById(e.categoryId)
-        return `  • ${cat?.name ?? e.categoryId}: ${tl(parseFloat(e.amount) || 0)}`
+        const odemeAd = normalizePaymentMethod(e.paymentMethod) === "banka" ? "banka" : "nakit"
+        return `  • ${cat?.name ?? e.categoryId}: ${tl(parseFloat(e.amount) || 0)} (${odemeAd})`
       }).join("\n")
     : "  —"
 
   const netSign = net >= 0 ? "📈" : "📉"
-  const netFormatted = tl(net)
 
   const message = [
     `📋 <b>Yeni Günlük Kayıt</b>`,
@@ -201,16 +218,16 @@ export async function POST(req: NextRequest) {
     `💚 Gelir: <b>${tl(totalIncome)}</b>`,
     `  💵 Nakit: ${tl(cash)}`,
     `  💳 Kart: ${tl(card)}`,
-    `  🎟 Bilet: ${tl(ticket)}`,
+    `  🎟 Bilet (nakit): ${tl(ticketCash)}`,
+    `  🎟 Bilet (kart): ${tl(ticketCard)}`,
     ``,
     `💸 Gider: <b>${tl(totalExpense)}</b>`,
     expenseLines,
     ``,
-    `${netSign} Net: <b>${netFormatted}</b>`,
+    `${netSign} Net: <b>${tl(net)}</b>`,
     notes ? `\n📝 ${notes}` : "",
   ].join("\n").trimEnd()
 
-  // Don't await — let it send in the background
   sendTelegramMessage(message).catch(() => {})
 
   return NextResponse.json(
@@ -221,7 +238,8 @@ export async function POST(req: NextRequest) {
       business: { id: businessId, name: bizName },
       cashIncome: cash,
       cardIncome: card,
-      ticketIncome: ticket,
+      ticketIncome: ticketCash,
+      ticketCardIncome: ticketCard,
       totalIncome,
       totalExpense,
       netAmount: net,
@@ -235,6 +253,7 @@ export async function POST(req: NextRequest) {
           category: { id: e.categoryId, name: cat?.name ?? e.categoryId, color: cat?.color ?? "#6366f1" },
           amount: parseFloat(e.amount) || 0,
           description: e.description ?? "",
+          paymentMethod: normalizePaymentMethod(e.paymentMethod),
         }
       }),
       createdAt,

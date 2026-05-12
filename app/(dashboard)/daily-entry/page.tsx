@@ -34,15 +34,16 @@ interface Closing {
   cashIncome: number
   cardIncome: number
   ticketIncome: number
+  ticketCardIncome: number
   notes: string
-  expenses: Array<{ id: string; categoryId: string; category: { name: string; color: string }; amount: number; description: string }>
+  expenses: Array<{ id: string; categoryId: string; category: { name: string; color: string }; amount: number; description: string; paymentMethod?: string }>
 }
 
 const expenseRow = z.object({
   categoryId: z.string().min(1, "Kategori seçin"),
   amount: z.string().refine((v) => !isNaN(parseFloat(v)) && parseFloat(v) >= 0, "Geçerli tutar girin"),
   description: z.string().optional(),
-  paymentMethod: z.enum(["CASH", "CARD", "TICKET", "MIXED"]).default("CASH"),
+  paymentMethod: z.enum(["nakit", "banka"]).default("nakit"),
 })
 
 const formSchema = z.object({
@@ -51,6 +52,7 @@ const formSchema = z.object({
   cashIncome: z.string().default("0"),
   cardIncome: z.string().default("0"),
   ticketIncome: z.string().default("0"),
+  ticketCardIncome: z.string().default("0"),
   notes: z.string().optional(),
   expenses: z.array(expenseRow),
 })
@@ -69,7 +71,7 @@ export default function DailyEntryPage() {
     resolver: zodResolver(formSchema) as any,
     defaultValues: {
       businessId: "", date: format(new Date(), "yyyy-MM-dd"),
-      cashIncome: "", cardIncome: "", ticketIncome: "",
+      cashIncome: "", cardIncome: "", ticketIncome: "", ticketCardIncome: "",
       notes: "", expenses: [],
     },
   })
@@ -79,7 +81,8 @@ export default function DailyEntryPage() {
   const totalIncome =
     (parseFloat(watchedValues.cashIncome || "0") || 0) +
     (parseFloat(watchedValues.cardIncome || "0") || 0) +
-    (parseFloat(watchedValues.ticketIncome || "0") || 0)
+    (parseFloat(watchedValues.ticketIncome || "0") || 0) +
+    (parseFloat(watchedValues.ticketCardIncome || "0") || 0)
   const totalExpense = watchedValues.expenses.reduce((sum, e) => sum + (parseFloat(e.amount || "0") || 0), 0)
   const net = totalIncome - totalExpense
 
@@ -104,7 +107,7 @@ export default function DailyEntryPage() {
     setEditingId(null)
     reset({
       businessId: "", date: format(new Date(), "yyyy-MM-dd"),
-      cashIncome: "", cardIncome: "", ticketIncome: "",
+      cashIncome: "", cardIncome: "", ticketIncome: "", ticketCardIncome: "",
       notes: "", expenses: [],
     })
   }
@@ -120,12 +123,13 @@ export default function DailyEntryPage() {
       cashIncome: String(data.cashIncome || ""),
       cardIncome: String(data.cardIncome || ""),
       ticketIncome: String(data.ticketIncome || ""),
+      ticketCardIncome: String(data.ticketCardIncome || ""),
       notes: data.notes ?? "",
       expenses: (data.expenses ?? []).map((e: any) => ({
         categoryId: e.categoryId,
         amount: String(e.amount),
         description: e.description ?? "",
-        paymentMethod: "CASH" as const,
+        paymentMethod: (e.paymentMethod === "banka" ? "banka" : "nakit") as "nakit" | "banka",
       })),
     })
     window.scrollTo({ top: 0, behavior: "smooth" })
@@ -187,7 +191,7 @@ export default function DailyEntryPage() {
 
   function addExpenseRow() {
     if (categories.length === 0) return
-    append({ categoryId: categories[0].id, amount: "", description: "", paymentMethod: "CASH" })
+    append({ categoryId: categories[0].id, amount: "", description: "", paymentMethod: "nakit" })
   }
 
   if (fetching) {
@@ -263,18 +267,34 @@ export default function DailyEntryPage() {
                     <TrendingUp className="h-4 w-4 text-green-500" />
                     Gelir Bilgileri
                   </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div className="space-y-1.5">
-                      <Label className="text-xs">Nakit (₺)</Label>
-                      <Input type="number" step="0.01" min="0" placeholder="Tutar girin" {...register("cashIncome")} className="text-right" />
+                      <Label className="text-xs flex items-center gap-1">
+                        <span>Nakit (₺)</span>
+                        <span className="text-[10px] text-emerald-600">→ Kasa</span>
+                      </Label>
+                      <Input type="number" step="0.01" min="0" placeholder="0.00" {...register("cashIncome")} className="text-right" />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs">Kart (₺)</Label>
-                      <Input type="number" step="0.01" min="0" placeholder="Tutar girin" {...register("cardIncome")} className="text-right" />
+                      <Label className="text-xs flex items-center gap-1">
+                        <span>Kart (₺)</span>
+                        <span className="text-[10px] text-blue-600">→ Banka</span>
+                      </Label>
+                      <Input type="number" step="0.01" min="0" placeholder="0.00" {...register("cardIncome")} className="text-right" />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs">Bilet (₺)</Label>
-                      <Input type="number" step="0.01" min="0" placeholder="Tutar girin" {...register("ticketIncome")} className="text-right" />
+                      <Label className="text-xs flex items-center gap-1">
+                        <span>Bilet Nakit (₺)</span>
+                        <span className="text-[10px] text-emerald-600">→ Kasa</span>
+                      </Label>
+                      <Input type="number" step="0.01" min="0" placeholder="0.00" {...register("ticketIncome")} className="text-right" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs flex items-center gap-1">
+                        <span>Bilet Kart (₺)</span>
+                        <span className="text-[10px] text-blue-600">→ Banka</span>
+                      </Label>
+                      <Input type="number" step="0.01" min="0" placeholder="0.00" {...register("ticketCardIncome")} className="text-right" />
                     </div>
                   </div>
                   <div className="mt-2 text-right text-sm font-semibold text-green-600">
@@ -300,7 +320,9 @@ export default function DailyEntryPage() {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {fields.map((field, index) => (
+                      {fields.map((field, index) => {
+                        const isNakit = (watchedValues.expenses[index]?.paymentMethod ?? "nakit") === "nakit"
+                        return (
                         <div key={field.id} className="p-2 bg-gray-50 rounded-lg space-y-2">
                           <div className="flex gap-2">
                             <div className="flex-1">
@@ -327,10 +349,37 @@ export default function DailyEntryPage() {
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           </div>
-                          <Input placeholder="Not (opsiyonel)" className="h-8 text-xs bg-white"
-                            {...register(`expenses.${index}.description`)} />
+                          <div className="flex gap-2">
+                            <Input placeholder="Not (opsiyonel)" className="h-8 text-xs bg-white flex-1"
+                              {...register(`expenses.${index}.description`)} />
+                            <div className="inline-flex rounded-md border bg-white overflow-hidden text-xs">
+                              <button
+                                type="button"
+                                onClick={() => setValue(`expenses.${index}.paymentMethod`, "nakit")}
+                                className={`px-2.5 h-8 font-medium transition-colors ${
+                                  isNakit
+                                    ? "bg-emerald-600 text-white"
+                                    : "text-slate-600 hover:bg-slate-50"
+                                }`}
+                              >
+                                💵 Nakit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setValue(`expenses.${index}.paymentMethod`, "banka")}
+                                className={`px-2.5 h-8 font-medium transition-colors border-l ${
+                                  !isNakit
+                                    ? "bg-blue-600 text-white"
+                                    : "text-slate-600 hover:bg-slate-50"
+                                }`}
+                              >
+                                💳 Banka
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
                   {totalExpense > 0 && (

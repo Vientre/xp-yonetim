@@ -14,6 +14,7 @@ type Expense = {
   category: { id: string; name: string; color: string }
   description: string
   amount: number
+  paymentMethod?: "nakit" | "banka"
 }
 
 type DayEntry = {
@@ -23,6 +24,7 @@ type DayEntry = {
   cashIncome: number
   cardIncome: number
   ticketIncome: number
+  ticketCardIncome: number
   totalIncome: number
   totalExpense: number
   netAmount: number
