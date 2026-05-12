@@ -224,6 +224,7 @@ export default function RezervasyonlarPage() {
   const [pending, setPending] = useState<PendingAction | null>(null)
   const [noteEditing, setNoteEditing] = useState<Reservation | null>(null)
   const [hardDelete, setHardDelete] = useState<PendingHardDelete | null>(null)
+  const [endDayPending, setEndDayPending] = useState<{ tarih: string; gun: string; count: number } | null>(null)
 
   async function fetchMe() {
     try {
@@ -393,6 +394,25 @@ export default function RezervasyonlarPage() {
     const yearMonth = tarih.slice(0, 7)
     const count = deleted.filter((r) => r.tarih.startsWith(yearMonth)).length
     setHardDelete({ kind: "month", tarih, yearMonth, count })
+  }
+
+  async function confirmEndDay() {
+    if (!endDayPending) return
+    const target = endDayPending
+    setEndDayPending(null)
+    const res = await fetch("/api/rezervasyonlar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "endDay", tarih: target.tarih }),
+    })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      toast.error(typeof j?.error === "string" ? j.error : "İşlem başarısız")
+      return
+    }
+    const j = await res.json().catch(() => ({}))
+    toast.success(`${j?.processed ?? 0} kayıt geçmişe taşındı`)
+    await fetchAll()
   }
 
   async function uncomplete(id: string) {
@@ -669,6 +689,7 @@ export default function RezervasyonlarPage() {
             onNoshow={(r) => setPending({ item: r, type: "noshow" })}
             onUncomplete={(id) => uncomplete(id)}
             onDelete={(r) => setPending({ item: r, type: "delete" })}
+            onEndDay={(tarih, gun, count) => setEndDayPending({ tarih, gun, count })}
           />
         </TabsContent>
         <TabsContent value="deleted" className="mt-4">
@@ -702,6 +723,14 @@ export default function RezervasyonlarPage() {
           pending={pending}
           onCancel={() => setPending(null)}
           onConfirm={confirmAction}
+        />
+      )}
+
+      {endDayPending && (
+        <EndDayDialog
+          target={endDayPending}
+          onCancel={() => setEndDayPending(null)}
+          onConfirm={confirmEndDay}
         />
       )}
 
@@ -792,6 +821,7 @@ function ReservationGroups({
   onHardDeleteDate,
   onHardDeleteWeek,
   onHardDeleteMonth,
+  onEndDay,
 }: {
   loading: boolean
   items: Reservation[]
@@ -809,6 +839,7 @@ function ReservationGroups({
   onHardDeleteDate?: (tarih: string, gun: string, count: number) => void
   onHardDeleteWeek?: (tarih: string) => void
   onHardDeleteMonth?: (tarih: string) => void
+  onEndDay?: (tarih: string, gun: string, count: number) => void
 }) {
   if (loading) {
     return (
@@ -846,6 +877,18 @@ function ReservationGroups({
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-blue-700 font-medium">{g.items.length} kayıt</span>
+              {onEndDay && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-blue-700 border-blue-300 hover:bg-blue-100 h-7"
+                  onClick={() => onEndDay(g.tarih, g.gun, g.items.length)}
+                  title="Bu günün tüm aktif kayıtlarını geçmişe taşı"
+                >
+                  <Check className="h-3.5 w-3.5 mr-1" />
+                  Günü Bitir
+                </Button>
+              )}
               {onHardDeleteDate && (
                 <Button
                   variant="outline"
@@ -1149,6 +1192,50 @@ function DurumBadge({ durum }: { durum: Durum }) {
     )
   }
   return <span className="text-xs text-muted-foreground">-</span>
+}
+
+function EndDayDialog({
+  target,
+  onCancel,
+  onConfirm,
+}: {
+  target: { tarih: string; gun: string; count: number }
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl p-6 mx-4 w-full max-w-sm">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+            <CalendarClock className="w-5 h-5 text-blue-600" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-semibold text-slate-900 text-base">Günü bitir?</h3>
+            <p className="text-sm text-slate-500 mt-0.5">
+              <span className="font-medium text-slate-700">{formatTrDate(target.tarih)}</span> ({target.gun}) —{" "}
+              <span className="font-medium text-slate-700">{target.count} kayıt</span>
+            </p>
+          </div>
+          <button onClick={onCancel} className="p-1 rounded-md hover:bg-slate-100 text-slate-400">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-3 py-2 mb-5">
+          Bu günün tüm aktif kayıtları <strong>Geçmiş</strong> sekmesine taşınacak.
+          Geldi/Gelmedi işaretleri korunur; durumu boş olanlar <strong>İptal</strong> olarak kaydedilir.
+          Geri almak için Geçmiş&apos;ten her kaydı tek tek geri alabilirsiniz.
+        </p>
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" size="sm" onClick={onCancel}>Vazgeç</Button>
+          <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={onConfirm}>
+            <Check className="w-3.5 h-3.5 mr-1" />
+            {target.count} kaydı bitir
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function HardDeleteDialog({

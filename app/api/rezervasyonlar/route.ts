@@ -165,6 +165,11 @@ const hardDeleteSchema = z.object({
   id: z.string().min(1),
 })
 
+const endDaySchema = z.object({
+  action: z.literal("endDay"),
+  tarih: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tarih YYYY-MM-DD olmalı"),
+})
+
 const hardDeleteDateSchema = z.object({
   action: z.literal("hardDeleteDate"),
   tarih: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tarih YYYY-MM-DD olmalı"),
@@ -435,6 +440,47 @@ export async function POST(req: NextRequest) {
     ])
 
     return NextResponse.json({ ok: true, id })
+  }
+
+  if (body.action === "endDay") {
+    const parsed = endDaySchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    }
+    const { tarih } = parsed.data
+
+    try {
+      const rows = await getRows(TABS.RESERVATIONS)
+      const silmeTarihi = new Date().toISOString()
+      let processed = 0
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i]
+        if ((row[1] ?? "") !== tarih) continue
+        if (isTruthyFlag(row[9])) continue
+
+        // Mevcut durumu koru: geldi/gelmedi olduğu gibi kalır,
+        // durumu boş olanlar "iptal" olarak işaretlenir.
+        const existingDurum = parseDurum(row[13])
+        const finalDurum: Durum =
+          existingDurum === "geldi" || existingDurum === "gelmedi"
+            ? existingDurum
+            : "iptal"
+
+        await updateRowByIndex(TABS.RESERVATIONS, i, [
+          row[0], row[1], row[2], row[3], row[4], row[5],
+          row[6], row[7], row[8],
+          "true", user.id, user.name, silmeTarihi, finalDurum,
+          row[14] ?? "", row[15] ?? "", row[16] ?? "",
+        ])
+        processed++
+      }
+
+      return NextResponse.json({ ok: true, tarih, processed })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Bilinmeyen hata"
+      return NextResponse.json({ error: `Hata: ${msg}` }, { status: 500 })
+    }
   }
 
   if (body.action === "hardDelete") {
