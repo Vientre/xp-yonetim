@@ -13,11 +13,12 @@
  * Gelir/gider toplamlarına dahil DEĞİLDİR, sadece kasa/banka running balance'da etkilidir.
  */
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse, after } from "next/server"
 import { getAuthUser, hasBusinessAccess, getAccessibleBusinessIds } from "@/lib/auth-utils"
 import { getRows, appendRow, generateId } from "@/lib/sheets"
 import { TABS, getCategoryById, getBusinessName } from "@/lib/constants"
-import { sendTelegramMessage, tl, trDate } from "@/lib/telegram"
+import { tl, trDate } from "@/lib/telegram"
+import { sendWhatsAppMessage } from "@/lib/whatsapp"
 import { z } from "zod"
 
 const expenseRow = z.object({
@@ -202,7 +203,7 @@ export async function POST(req: NextRequest) {
     ])
   }
 
-  // Telegram bildirimi
+  // WhatsApp bildirimi — response sonrası arka planda gönderilir
   const bizName = getBusinessName(businessId)
   const expenseLines = expenses.length > 0
     ? expenses.map((e) => {
@@ -213,27 +214,35 @@ export async function POST(req: NextRequest) {
     : "  —"
 
   const netSign = net >= 0 ? "📈" : "📉"
+  const transferLines: string[] = []
+  if (kb > 0) transferLines.push(`  ➡️ Kasadan Bankaya: ${tl(kb)}`)
+  if (bk > 0) transferLines.push(`  ⬅️ Bankadan Kasaya: ${tl(bk)}`)
 
-  const message = [
-    `📋 <b>Yeni Günlük Kayıt</b>`,
+  const waMessage = [
+    `📋 *Yeni Günlük Kayıt*`,
     ``,
-    `🏢 <b>${bizName}</b> — ${trDate(date)}`,
+    `🏢 *${bizName}* — ${trDate(date)}`,
     `👤 ${user.name}`,
     ``,
-    `💚 Gelir: <b>${tl(totalIncome)}</b>`,
+    `💚 Gelir: *${tl(totalIncome)}*`,
     `  💵 Nakit: ${tl(cash)}`,
     `  💳 Kart: ${tl(card)}`,
     `  🎟 Bilet (nakit): ${tl(ticketCash)}`,
     `  🎟 Bilet (kart): ${tl(ticketCard)}`,
     ``,
-    `💸 Gider: <b>${tl(totalExpense)}</b>`,
+    `💸 Gider: *${tl(totalExpense)}*`,
     expenseLines,
+    ...(transferLines.length > 0
+      ? ["", `🔄 *Kasa ↔ Banka Transfer*`, ...transferLines]
+      : []),
     ``,
-    `${netSign} Net: <b>${tl(net)}</b>`,
+    `${netSign} Net: *${tl(net)}*`,
     notes ? `\n📝 ${notes}` : "",
   ].join("\n").trimEnd()
 
-  sendTelegramMessage(message).catch(() => {})
+  after(async () => {
+    await sendWhatsAppMessage(waMessage)
+  })
 
   return NextResponse.json(
     {
