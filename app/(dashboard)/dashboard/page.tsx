@@ -239,7 +239,7 @@ export default function DashboardPage() {
       )}
 
       {/* Genel Toplam */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {loading ? (
           Array.from({ length: 3 }).map((_, i) => (
             <Card key={i}><CardContent className="p-5"><Skeleton className="h-4 w-24 mb-2" /><Skeleton className="h-8 w-32" /></CardContent></Card>
@@ -247,37 +247,37 @@ export default function DashboardPage() {
         ) : (
           <>
             <Card>
-              <CardContent className="p-5 flex items-center gap-4">
+              <CardContent className="p-4 sm:p-5 flex items-center gap-3 sm:gap-4">
                 <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
                   <TrendingUp className="h-5 w-5 text-green-600" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-muted-foreground">Toplam Gelir</p>
-                  <p className="text-xl font-bold text-green-600">{formatCurrency(totalIncome)}</p>
+                  <p className="text-lg sm:text-xl font-bold text-green-600 break-words">{formatCurrency(totalIncome)}</p>
                   <ChangeBadge pct={data?.comparison?.incomeChange ?? null} />
                 </div>
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="p-5 flex items-center gap-4">
+              <CardContent className="p-4 sm:p-5 flex items-center gap-3 sm:gap-4">
                 <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
                   <TrendingDown className="h-5 w-5 text-red-600" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-muted-foreground">Toplam Gider</p>
-                  <p className="text-xl font-bold text-red-600">{formatCurrency(totalExpense)}</p>
+                  <p className="text-lg sm:text-xl font-bold text-red-600 break-words">{formatCurrency(totalExpense)}</p>
                   <ChangeBadge pct={data?.comparison?.expenseChange ?? null} invert />
                 </div>
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="p-5 flex items-center gap-4">
+              <CardContent className="p-4 sm:p-5 flex items-center gap-3 sm:gap-4">
                 <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${netAmount >= 0 ? "bg-blue-100" : "bg-red-100"}`}>
                   <Wallet className={`h-5 w-5 ${netAmount >= 0 ? "text-blue-600" : "text-red-600"}`} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-muted-foreground">Net Durum</p>
-                  <p className={`text-xl font-bold ${netAmount >= 0 ? "text-blue-600" : "text-red-600"}`}>{formatCurrency(netAmount)}</p>
+                  <p className={`text-lg sm:text-xl font-bold break-words ${netAmount >= 0 ? "text-blue-600" : "text-red-600"}`}>{formatCurrency(netAmount)}</p>
                   <ChangeBadge pct={data?.comparison?.netChange ?? null} />
                 </div>
               </CardContent>
