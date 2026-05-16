@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Settings, Save, Plus, Trash2, Building2, Wallet } from "lucide-react"
+import { Settings, Save, Plus, Trash2, Building2, Wallet, Download, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 
@@ -89,6 +89,7 @@ export default function SettingsPage() {
           <TabsTrigger value="balances">Kasa & Banka</TabsTrigger>
           <TabsTrigger value="categories">Gider Kategorileri</TabsTrigger>
           <TabsTrigger value="businesses">İşletmeler</TabsTrigger>
+          <TabsTrigger value="backup">Yedek</TabsTrigger>
         </TabsList>
 
         {/* Genel Ayarlar */}
@@ -328,6 +329,53 @@ export default function SettingsPage() {
               </div>
               <p className="text-xs text-muted-foreground mt-4">
                 İşletmeler sabit tanımlıdır. Değiştirmek için <code className="bg-gray-100 px-1 rounded">lib/constants.ts</code> dosyasını düzenleyin.
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Yedek */}
+        <TabsContent value="backup" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                Tam Yedek İndir
+              </CardTitle>
+              <CardDescription>
+                Tüm Google Sheets sekmelerini tek bir ZIP dosyası olarak indirir.
+                Her sekme ayrı bir CSV dosyası olarak (UTF-8 BOM ile Excel uyumlu) içerir.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm space-y-1">
+                <p className="font-medium text-blue-900">📦 Yedek içeriği</p>
+                <ul className="text-xs text-blue-800 list-disc pl-5 space-y-0.5">
+                  <li>Kullanicilar, GunlukGelir, Giderler (gelir & gider kayıtları)</li>
+                  <li>Yemek, Puantaj, Personeller (personel & sipariş kayıtları)</li>
+                  <li>KursOgrenci, KursOdeme, KursGider (kurs verileri)</li>
+                  <li>Rezervasyonlar, Hatirlatmalar (LaserTag rezervasyon + sistem)</li>
+                  <li>Ayarlar (sistem parametreleri)</li>
+                  <li>README.txt — yedek meta bilgisi</li>
+                </ul>
+              </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-xs text-amber-800">
+                💡 <strong>Öneri:</strong> Haftalık olarak indirip güvenli bir yere (Drive, email, harici disk) kopyalayın.
+                Google Sheets&apos;in kendi otomatik yedeklemesi var ama hesap kaybı durumunda dışarıda bir kopya hayat kurtarır.
+              </div>
+              <Button
+                onClick={() => {
+                  // İndirme için yeni sekme açmak yerine doğrudan link
+                  window.location.href = "/api/backup"
+                  toast.success("Yedek hazırlanıyor — birkaç saniye içinde inecek")
+                }}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Yedeği İndir (ZIP)
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Dosya adı: <code className="bg-gray-100 px-1 rounded">yedek-{new Date().toISOString().slice(0, 10)}.zip</code>
               </p>
             </CardContent>
           </Card>

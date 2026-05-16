@@ -51,6 +51,19 @@ export async function getRows(tab: string): Promise<string[][]> {
 }
 
 /**
+ * Get all rows from a tab including the header row (row 1).
+ * First row in the returned array is the header.
+ */
+export async function getAllRowsWithHeader(tab: string): Promise<string[][]> {
+  const sheets = await getSheets()
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SHEET_ID(),
+    range: `${tab}!A1:Z2000`,
+  })
+  return (res.data.values ?? []) as string[][]
+}
+
+/**
  * Append a new row to a tab.
  * All values are converted to strings.
  */
