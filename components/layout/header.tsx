@@ -12,8 +12,9 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { LogOut, User, Settings, Bell, Menu } from "lucide-react"
+import { LogOut, Settings, Bell, Menu } from "lucide-react"
 import { getRoleName } from "@/lib/utils"
+import { ThemeToggle } from "@/components/theme-toggle"
 import type { Role } from "@/lib/constants"
 
 interface HeaderProps {
@@ -39,12 +40,12 @@ export function Header({ userName, userEmail, userRole, onMenuClick }: HeaderPro
   }
 
   return (
-    <header className="h-14 border-b bg-white flex items-center justify-between px-4 gap-4">
+    <header className="h-14 border-b bg-white dark:bg-slate-950 dark:border-slate-800 flex items-center justify-between px-4 gap-4">
       {/* Hamburger — only on mobile */}
       <Button
         variant="ghost"
         size="icon"
-        className="md:hidden text-gray-500"
+        className="md:hidden text-gray-500 dark:text-gray-400"
         onClick={onMenuClick}
       >
         <Menu className="h-5 w-5" />
@@ -52,8 +53,11 @@ export function Header({ userName, userEmail, userRole, onMenuClick }: HeaderPro
       <div className="flex-1" />
 
       <div className="flex items-center gap-2">
+        {/* Tema değiştirici */}
+        <ThemeToggle />
+
         {/* Bildirimler - placeholder */}
-        <Button variant="ghost" size="icon" className="text-gray-500 hover:text-gray-700">
+        <Button variant="ghost" size="icon" className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
           <Bell className="h-4 w-4" />
         </Button>
 
