@@ -20,21 +20,21 @@ import {
 } from "lucide-react"
 
 // Önceki dönemle karşılaştırma badge'i
-function ChangeBadge({ pct, invert = false }: { pct: number | null; invert?: boolean }) {
-  if (pct === null) return null
+function ChangeBadge({ pct, invert = false, compact = false }: { pct: number | null | undefined; invert?: boolean; compact?: boolean }) {
+  if (pct === null || pct === undefined) return null
   const isPositive = invert ? pct < 0 : pct > 0
   const isNeutral = pct === 0
   if (isNeutral) {
     return (
       <span className="inline-flex items-center gap-0.5 text-xs text-gray-400 mt-0.5">
-        <Minus className="h-3 w-3" /> Değişim yok
+        <Minus className="h-3 w-3" /> {compact ? "—" : "Değişim yok"}
       </span>
     )
   }
   return (
     <span className={`inline-flex items-center gap-0.5 text-xs font-medium mt-0.5 ${isPositive ? "text-green-600" : "text-red-500"}`}>
-      {isPositive ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
-      {Math.abs(pct)}% geçen döneme göre
+      {isPositive ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+      {Math.abs(pct)}%{compact ? "" : " geçen döneme göre"}
     </span>
   )
 }
@@ -91,6 +91,12 @@ interface BusinessSummary {
   income: number
   expense: number
   net: number
+  prevIncome?: number
+  prevExpense?: number
+  prevNet?: number
+  incomeChange?: number | null
+  expenseChange?: number | null
+  netChange?: number | null
 }
 
 interface Comparison {
@@ -167,7 +173,12 @@ export default function DashboardPage() {
   // Merge businessSummary with all businesses (show 0 for missing ones)
   const businessRows: BusinessSummary[] = ALL_BUSINESSES.map((b) => {
     const found = data?.businessSummary.find((s) => s.id === b.id)
-    return found ?? { id: b.id, name: b.name, income: 0, expense: 0, net: 0 }
+    return found ?? {
+      id: b.id, name: b.name,
+      income: 0, expense: 0, net: 0,
+      prevIncome: 0, prevExpense: 0, prevNet: 0,
+      incomeChange: null, expenseChange: null, netChange: null,
+    }
   })
 
   const totalIncome = data?.summary.totalIncome ?? 0
@@ -298,15 +309,20 @@ export default function DashboardPage() {
                     )}
                   </div>
                   <p className="text-lg font-bold text-green-600">{formatCurrency(biz.income)}</p>
-                  <p className="text-xs text-muted-foreground">Gelir</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">Gelir</p>
+                    <ChangeBadge pct={biz.incomeChange} compact />
+                  </div>
                   <div className="mt-2 pt-2 border-t grid grid-cols-2 gap-1 text-xs">
                     <div>
                       <span className="text-muted-foreground">Gider</span>
                       <p className="font-medium text-red-600">{formatCurrency(biz.expense)}</p>
+                      <ChangeBadge pct={biz.expenseChange} invert compact />
                     </div>
                     <div>
                       <span className="text-muted-foreground">Net</span>
                       <p className={`font-medium ${biz.net >= 0 ? "text-blue-600" : "text-red-600"}`}>{formatCurrency(biz.net)}</p>
+                      <ChangeBadge pct={biz.netChange} compact />
                     </div>
                   </div>
                 </CardContent>

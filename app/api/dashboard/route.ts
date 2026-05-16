@@ -101,12 +101,30 @@ export async function GET(req: NextRequest) {
   const cardIncome = filtered.reduce((s, r) => s + (parseFloat(r[4]) || 0), 0)
   const ticketIncome = filtered.reduce((s, r) => s + (parseFloat(r[5]) || 0), 0)
 
-  // ─── Business summary ────────────────────────────────────────────────────────
-  const businessSummary: Record<string, { id: string; name: string; income: number; expense: number; net: number }> = {}
+  // ─── Business summary (mevcut dönem) ────────────────────────────────────────
+  type BusinessRow = {
+    id: string
+    name: string
+    income: number
+    expense: number
+    net: number
+    prevIncome: number
+    prevExpense: number
+    prevNet: number
+    incomeChange: number | null
+    expenseChange: number | null
+    netChange: number | null
+  }
+  const businessSummary: Record<string, BusinessRow> = {}
   for (const row of filtered) {
     const bizId = row[2]
     if (!businessSummary[bizId]) {
-      businessSummary[bizId] = { id: bizId, name: getBusinessName(bizId), income: 0, expense: 0, net: 0 }
+      businessSummary[bizId] = {
+        id: bizId, name: getBusinessName(bizId),
+        income: 0, expense: 0, net: 0,
+        prevIncome: 0, prevExpense: 0, prevNet: 0,
+        incomeChange: null, expenseChange: null, netChange: null,
+      }
     }
     businessSummary[bizId].income += parseFloat(row[6]) || 0
     businessSummary[bizId].expense += parseFloat(row[7]) || 0
@@ -200,13 +218,37 @@ export async function GET(req: NextRequest) {
   const mealTotal = filteredYemek.reduce((s, r) => s + (parseFloat(r[5]) || 0), 0)
 
   // ─── Previous period comparison ──────────────────────────────────────────────
-  const prevFiltered = gelirRows.filter((r) => r[1] >= prevFromDate && r[1] <= prevToDate)
+  let prevFiltered = gelirRows.filter((r) => r[1] >= prevFromDate && r[1] <= prevToDate)
+  if (businessId) prevFiltered = prevFiltered.filter((r) => r[2] === businessId)
   const prevIncome = prevFiltered.reduce((s, r) => s + (parseFloat(r[6]) || 0), 0)
   const prevExpense = prevFiltered.reduce((s, r) => s + (parseFloat(r[7]) || 0), 0)
 
   function pctChange(current: number, prev: number): number | null {
     if (prev === 0) return null
     return Math.round(((current - prev) / prev) * 1000) / 10
+  }
+
+  // Her işletme için geçen dönem rakamlarını doldur
+  for (const row of prevFiltered) {
+    const bizId = row[2]
+    if (!businessSummary[bizId]) {
+      // Bu işletmenin mevcut dönemde kaydı yok ama geçen dönemde var — yine ekle
+      businessSummary[bizId] = {
+        id: bizId, name: getBusinessName(bizId),
+        income: 0, expense: 0, net: 0,
+        prevIncome: 0, prevExpense: 0, prevNet: 0,
+        incomeChange: null, expenseChange: null, netChange: null,
+      }
+    }
+    businessSummary[bizId].prevIncome += parseFloat(row[6]) || 0
+    businessSummary[bizId].prevExpense += parseFloat(row[7]) || 0
+  }
+  for (const bizId of Object.keys(businessSummary)) {
+    const b = businessSummary[bizId]
+    b.prevNet = b.prevIncome - b.prevExpense
+    b.incomeChange = pctChange(b.income, b.prevIncome)
+    b.expenseChange = pctChange(b.expense, b.prevExpense)
+    b.netChange = pctChange(b.net, b.prevNet)
   }
 
   const comparison = {
