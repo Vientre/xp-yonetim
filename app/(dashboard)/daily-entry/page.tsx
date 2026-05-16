@@ -276,28 +276,28 @@ export default function DailyEntryPage() {
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div className="space-y-1.5">
-                      <Label className="text-xs flex items-center gap-1">
+                      <Label className="text-xs flex flex-wrap items-baseline gap-x-1">
                         <span>Nakit (₺)</span>
                         <span className="text-[10px] text-emerald-600">→ Kasa</span>
                       </Label>
                       <Input type="number" step="0.01" min="0" placeholder="0.00" {...register("cashIncome")} className="text-right" />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs flex items-center gap-1">
+                      <Label className="text-xs flex flex-wrap items-baseline gap-x-1">
                         <span>Kart (₺)</span>
                         <span className="text-[10px] text-blue-600">→ Banka</span>
                       </Label>
                       <Input type="number" step="0.01" min="0" placeholder="0.00" {...register("cardIncome")} className="text-right" />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs flex items-center gap-1">
+                      <Label className="text-xs flex flex-wrap items-baseline gap-x-1">
                         <span>Bilet Nakit (₺)</span>
                         <span className="text-[10px] text-emerald-600">→ Kasa</span>
                       </Label>
                       <Input type="number" step="0.01" min="0" placeholder="0.00" {...register("ticketIncome")} className="text-right" />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs flex items-center gap-1">
+                      <Label className="text-xs flex flex-wrap items-baseline gap-x-1">
                         <span>Bilet Kart (₺)</span>
                         <span className="text-[10px] text-blue-600">→ Banka</span>
                       </Label>
@@ -318,7 +318,7 @@ export default function DailyEntryPage() {
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <Label className="text-xs flex items-center gap-1">
+                      <Label className="text-xs flex flex-wrap items-baseline gap-x-1">
                         <span>Kasadan → Bankaya (₺)</span>
                         <span className="text-[10px] text-violet-600">para yatırma</span>
                       </Label>
@@ -330,7 +330,7 @@ export default function DailyEntryPage() {
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs flex items-center gap-1">
+                      <Label className="text-xs flex flex-wrap items-baseline gap-x-1">
                         <span>Bankadan → Kasaya (₺)</span>
                         <span className="text-[10px] text-violet-600">para çekme</span>
                       </Label>
@@ -387,7 +387,7 @@ export default function DailyEntryPage() {
                               </Select>
                             </div>
                             <Input type="number" step="0.01" min="0" placeholder="0.00"
-                              className="h-8 text-xs text-right bg-white w-24"
+                              className="h-8 text-xs text-right bg-white w-20 sm:w-24 flex-shrink-0"
                               {...register(`expenses.${index}.amount`)} />
                             <Button type="button" variant="ghost" size="icon"
                               className="h-8 w-8 flex-shrink-0 text-red-400 hover:text-red-600"
@@ -395,10 +395,10 @@ export default function DailyEntryPage() {
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           </div>
-                          <div className="flex gap-2">
-                            <Input placeholder="Not (opsiyonel)" className="h-8 text-xs bg-white flex-1"
+                          <div className="flex gap-2 flex-wrap sm:flex-nowrap">
+                            <Input placeholder="Not (opsiyonel)" className="h-8 text-xs bg-white flex-1 min-w-[140px]"
                               {...register(`expenses.${index}.description`)} />
-                            <div className="inline-flex rounded-md border bg-white overflow-hidden text-xs">
+                            <div className="inline-flex rounded-md border bg-white overflow-hidden text-xs flex-shrink-0">
                               <button
                                 type="button"
                                 onClick={() => setValue(`expenses.${index}.paymentMethod`, "nakit")}

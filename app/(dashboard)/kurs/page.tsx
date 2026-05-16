@@ -5,7 +5,7 @@ import { Plus, Trash2, Search, Printer, GraduationCap, ChevronLeft, ChevronRight
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
-import { cn } from "@/lib/utils"
+import { cn, formatCurrency } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,10 +44,6 @@ const TR_MONTHS = [
   "Ocak","Şubat","Mart","Nisan","Mayıs","Haziran",
   "Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık",
 ]
-
-function formatTL(n: number) {
-  return "₺" + new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
-}
 
 function formatDate(iso: string) {
   if (!iso) return ""
@@ -391,15 +387,15 @@ export default function KursPage() {
         </div>
         <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 shadow-sm">
           <p className="text-xs font-medium text-emerald-700 uppercase tracking-wide">Toplam Tahsilat</p>
-          <p className="text-3xl font-bold text-emerald-700 mt-1">{formatTL(totalCollected)}</p>
+          <p className="text-3xl font-bold text-emerald-700 mt-1">{formatCurrency(totalCollected)}</p>
         </div>
         <div className="bg-red-50 border border-red-100 rounded-xl p-4 shadow-sm">
           <p className="text-xs font-medium text-red-700 uppercase tracking-wide">Eksik Ödeme</p>
-          <p className="text-3xl font-bold text-red-700 mt-1">{formatTL(totalMissing)}</p>
+          <p className="text-3xl font-bold text-red-700 mt-1">{formatCurrency(totalMissing)}</p>
         </div>
         <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 shadow-sm">
           <p className="text-xs font-medium text-orange-700 uppercase tracking-wide">Toplam Gider</p>
-          <p className="text-3xl font-bold text-orange-700 mt-1">{formatTL(totalExpenses)}</p>
+          <p className="text-3xl font-bold text-orange-700 mt-1">{formatCurrency(totalExpenses)}</p>
           <p className="text-xs text-orange-500 mt-0.5">{expenses.length} kalem</p>
         </div>
         {(() => {
@@ -408,7 +404,7 @@ export default function KursPage() {
           return (
             <div className={`rounded-xl p-4 shadow-sm border ${isPositive ? "bg-blue-50 border-blue-100" : "bg-red-50 border-red-100"}`}>
               <p className={`text-xs font-medium uppercase tracking-wide ${isPositive ? "text-blue-700" : "text-red-700"}`}>Net</p>
-              <p className={`text-3xl font-bold mt-1 ${isPositive ? "text-blue-700" : "text-red-700"}`}>{formatTL(net)}</p>
+              <p className={`text-3xl font-bold mt-1 ${isPositive ? "text-blue-700" : "text-red-700"}`}>{formatCurrency(net)}</p>
               <p className={`text-xs mt-0.5 ${isPositive ? "text-blue-500" : "text-red-500"}`}>
                 {isPositive ? "Tahsilat − Gider" : "Zarar"}
               </p>
@@ -436,7 +432,7 @@ export default function KursPage() {
         <div className="flex items-center gap-2 px-4 py-3 bg-orange-50 border-b border-orange-100">
           <Receipt className="w-4 h-4 text-orange-600" />
           <h2 className="text-sm font-semibold text-orange-800">Kurs Giderleri</h2>
-          <span className="ml-auto text-sm font-bold text-orange-700">{formatTL(totalExpenses)}</span>
+          <span className="ml-auto text-sm font-bold text-orange-700">{formatCurrency(totalExpenses)}</span>
         </div>
 
         {/* Gider ekleme formu */}
@@ -487,7 +483,7 @@ export default function KursPage() {
                   <tr key={exp.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                     <td className="px-4 py-2.5 text-slate-600 tabular-nums whitespace-nowrap">{formatDate(exp.tarih)}</td>
                     <td className="px-4 py-2.5 text-slate-800">{exp.detay}</td>
-                    <td className="px-4 py-2.5 text-right font-semibold text-orange-700 tabular-nums">{formatTL(exp.tutar)}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-orange-700 tabular-nums">{formatCurrency(exp.tutar)}</td>
                     <td className="px-3 py-2.5">
                       <button
                         onClick={() => deleteExpense(exp.id)}
@@ -503,7 +499,7 @@ export default function KursPage() {
               <tfoot>
                 <tr className="border-t-2 border-slate-200 bg-slate-50">
                   <td colSpan={2} className="px-4 py-2.5 font-semibold text-slate-700 text-xs">TOPLAM</td>
-                  <td className="px-4 py-2.5 text-right font-bold text-orange-700 tabular-nums">{formatTL(totalExpenses)}</td>
+                  <td className="px-4 py-2.5 text-right font-bold text-orange-700 tabular-nums">{formatCurrency(totalExpenses)}</td>
                   <td />
                 </tr>
               </tfoot>
@@ -605,7 +601,7 @@ export default function KursPage() {
                             <span className="text-slate-300 text-xs">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-right text-slate-600 tabular-nums">{formatTL(student.monthlyFee)}</td>
+                        <td className="px-4 py-3 text-right text-slate-600 tabular-nums">{formatCurrency(student.monthlyFee)}</td>
 
                         {months.map((mo) => {
                           const payment = student.payments[mo.key]
@@ -639,10 +635,10 @@ export default function KursPage() {
                         })}
 
                         <td className="px-4 py-3 text-right font-semibold text-emerald-700 tabular-nums">
-                          {totalPaid > 0 ? formatTL(totalPaid) : <span className="text-slate-300">—</span>}
+                          {totalPaid > 0 ? formatCurrency(totalPaid) : <span className="text-slate-300">—</span>}
                         </td>
                         <td className="px-4 py-3 text-right font-semibold text-red-600 tabular-nums">
-                          {totalDebt > 0 ? formatTL(totalDebt) : <span className="text-slate-300">—</span>}
+                          {totalDebt > 0 ? formatCurrency(totalDebt) : <span className="text-slate-300">—</span>}
                         </td>
                         <td className="px-3 py-3 print:hidden">
                           <button
@@ -673,8 +669,8 @@ export default function KursPage() {
                         </td>
                       )
                     })}
-                    <td className="px-4 py-3 text-right font-bold text-emerald-700 tabular-nums">{formatTL(totalCollected)}</td>
-                    <td className="px-4 py-3 text-right font-bold text-red-700 tabular-nums">{formatTL(totalMissing)}</td>
+                    <td className="px-4 py-3 text-right font-bold text-emerald-700 tabular-nums">{formatCurrency(totalCollected)}</td>
+                    <td className="px-4 py-3 text-right font-bold text-red-700 tabular-nums">{formatCurrency(totalMissing)}</td>
                     <td className="print:hidden" />
                   </tr>
                 </tfoot>

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, Fragment } from "react"
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Printer, Wallet, Banknote, TableProperties } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { cn } from "@/lib/utils"
+import { cn, formatCurrency } from "@/lib/utils"
 import { BUSINESSES } from "@/lib/constants"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -46,13 +46,6 @@ type DailyBalance = {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function formatTL(n: number) {
-  return new Intl.NumberFormat("tr-TR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(n)
-}
 
 function getDaysInMonth(year: number, month: number) {
   return new Date(year, month + 1, 0).getDate()
@@ -283,7 +276,7 @@ export default function AylikTabloPage() {
             ].map(c => (
               <div key={c.label} className={cn("rounded-xl p-3", c.bg)}>
                 <p className="text-xs text-slate-500 font-medium">{c.label}</p>
-                <p className={cn("text-sm font-bold mt-0.5", c.color)}>₺{formatTL(c.value)}</p>
+                <p className={cn("text-sm font-bold mt-0.5", c.color)}>{formatCurrency(c.value)}</p>
               </div>
             ))}
           </div>
@@ -338,22 +331,22 @@ export default function AylikTabloPage() {
                             {entry ? (
                               <>
                                 <td className="px-4 py-2.5 text-right text-slate-700">
-                                  {entry.cashIncome > 0 ? `₺${formatTL(entry.cashIncome)}` : <span className="text-slate-300">—</span>}
+                                  {entry.cashIncome > 0 ? `${formatCurrency(entry.cashIncome)}` : <span className="text-slate-300">—</span>}
                                 </td>
                                 <td className="px-4 py-2.5 text-right text-slate-700">
-                                  {entry.cardIncome > 0 ? `₺${formatTL(entry.cardIncome)}` : <span className="text-slate-300">—</span>}
+                                  {entry.cardIncome > 0 ? `${formatCurrency(entry.cardIncome)}` : <span className="text-slate-300">—</span>}
                                 </td>
                                 <td className="px-4 py-2.5 text-right text-slate-700">
-                                  {biletTotal > 0 ? `₺${formatTL(biletTotal)}` : <span className="text-slate-300">—</span>}
+                                  {biletTotal > 0 ? `${formatCurrency(biletTotal)}` : <span className="text-slate-300">—</span>}
                                 </td>
                                 <td className="px-4 py-2.5 text-right font-semibold text-emerald-700 border-l border-slate-100">
-                                  ₺{formatTL(entry.totalIncome)}
+                                  {formatCurrency(entry.totalIncome)}
                                 </td>
                                 <td className="px-4 py-2.5 text-right font-semibold text-red-600">
-                                  {entry.totalExpense > 0 ? `₺${formatTL(entry.totalExpense)}` : <span className="text-slate-300">—</span>}
+                                  {entry.totalExpense > 0 ? `${formatCurrency(entry.totalExpense)}` : <span className="text-slate-300">—</span>}
                                 </td>
                                 <td className={cn("px-4 py-2.5 text-right font-bold border-r border-slate-100", entry.netAmount >= 0 ? "text-blue-700" : "text-red-700")}>
-                                  ₺{formatTL(entry.netAmount)}
+                                  {formatCurrency(entry.netAmount)}
                                 </td>
                                 <td className="px-3 py-2.5 text-center print:hidden">
                                   {entry.expenses.length > 0 && (
@@ -392,7 +385,7 @@ export default function AylikTabloPage() {
                                           {(e.paymentMethod ?? "nakit") === "nakit" ? "Nakit" : "Banka"}
                                         </span>
                                       </span>
-                                      <span className="font-mono text-slate-700">₺{formatTL(e.amount)}</span>
+                                      <span className="font-mono text-slate-700">{formatCurrency(e.amount)}</span>
                                     </li>
                                   ))}
                                 </ul>
@@ -485,20 +478,20 @@ function BalanceTab({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className={cn("rounded-xl p-3", accent.bgFaint)}>
           <p className={cn("text-xs font-medium", accent.text)}>Başlangıç Bakiyesi</p>
-          <p className={cn("text-sm font-bold mt-0.5", accent.textDark)}>₺{formatTL(startBalance)}</p>
+          <p className={cn("text-sm font-bold mt-0.5", accent.textDark)}>{formatCurrency(startBalance)}</p>
           <p className={cn("text-[10px] mt-0.5", accent.text)}>{formatDateShort(startDate)} itibarıyla</p>
         </div>
         <div className="rounded-xl p-3 bg-emerald-50">
           <p className="text-xs text-emerald-700 font-medium">Ay İçi Giriş</p>
-          <p className="text-sm font-bold text-emerald-900 mt-0.5">+ ₺{formatTL(totals.inflow)}</p>
+          <p className="text-sm font-bold text-emerald-900 mt-0.5">+ {formatCurrency(totals.inflow)}</p>
         </div>
         <div className="rounded-xl p-3 bg-red-50">
           <p className="text-xs text-red-700 font-medium">Ay İçi Çıkış</p>
-          <p className="text-sm font-bold text-red-900 mt-0.5">- ₺{formatTL(totals.outflow)}</p>
+          <p className="text-sm font-bold text-red-900 mt-0.5">- {formatCurrency(totals.outflow)}</p>
         </div>
         <div className={cn("rounded-xl p-3", accent.bgFaint, "ring-2", accent.border)}>
           <p className={cn("text-xs font-medium", accent.text)}>Ay Sonu Bakiye</p>
-          <p className={cn("text-base font-bold mt-0.5", accent.textDark)}>₺{formatTL(lastBalance)}</p>
+          <p className={cn("text-base font-bold mt-0.5", accent.textDark)}>{formatCurrency(lastBalance)}</p>
         </div>
       </div>
 
@@ -545,16 +538,16 @@ function BalanceTab({
                     ) : (
                       <>
                         <td className="px-4 py-2.5 text-right text-slate-500 text-xs">
-                          ₺{formatTL(d.startBalance)}
+                          {formatCurrency(d.startBalance)}
                         </td>
                         <td className="px-4 py-2.5 text-right text-emerald-700">
-                          {d.inflow > 0 ? `+ ₺${formatTL(d.inflow)}` : <span className="text-slate-300">—</span>}
+                          {d.inflow > 0 ? `+ ${formatCurrency(d.inflow)}` : <span className="text-slate-300">—</span>}
                         </td>
                         <td className="px-4 py-2.5 text-right text-red-600">
-                          {d.outflow > 0 ? `- ₺${formatTL(d.outflow)}` : <span className="text-slate-300">—</span>}
+                          {d.outflow > 0 ? `- ${formatCurrency(d.outflow)}` : <span className="text-slate-300">—</span>}
                         </td>
                         <td className={cn("px-4 py-2.5 text-right font-bold border-l border-slate-100", accent.textDark)}>
-                          ₺{formatTL(d.endBalance)}
+                          {formatCurrency(d.endBalance)}
                         </td>
                       </>
                     )}
