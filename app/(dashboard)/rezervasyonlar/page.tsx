@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react"
 import {
-  CalendarClock, Plus, Trash2, RefreshCw, AlertTriangle, X, RotateCcw, Phone,
+  CalendarClock, Plus, Trash2, RefreshCw, AlertTriangle, X, RotateCcw, Phone, Download,
   StickyNote, Check, CheckCircle2, XCircle, Pencil, Users, Clock, Trash, ShieldAlert,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -12,6 +12,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { downloadCsv } from "@/lib/csv"
 
 type Durum = "" | "geldi" | "gelmedi" | "iptal"
 type Sure = 30 | 45 | 60
@@ -415,6 +416,41 @@ export default function RezervasyonlarPage() {
     await fetchAll()
   }
 
+  function exportToCsv() {
+    if (items.length === 0) {
+      toast.error("İndirilebilecek kayıt yok")
+      return
+    }
+    const headers = [
+      "Tarih", "Gün", "Saat", "Bitiş", "Kişi", "Süre (dk)",
+      "Telefon", "Not", "Müşteri Notu",
+      "Durum", "Ekleyen", "Oluşturma", "Silen", "Silme Tarihi",
+    ]
+    const sorted = [...items].sort((a, b) => {
+      if (a.tarih !== b.tarih) return b.tarih.localeCompare(a.tarih)
+      return b.saat.localeCompare(a.saat)
+    })
+    const rows = [
+      headers,
+      ...sorted.map((r) => {
+        const endSaat = r.sure > 0 ? addMinutes(r.saat, r.sure + 15) : ""
+        const durumLabel = r.silindi
+          ? (r.durum === "geldi" ? "Geldi (geçmiş)" : r.durum === "gelmedi" ? "Gelmedi (geçmiş)" : "İptal")
+          : (r.durum === "geldi" ? "Geldi" : r.durum === "gelmedi" ? "Gelmedi" : "Bekliyor")
+        return [
+          r.tarih, r.gun, r.saat, endSaat,
+          r.kisiSayisi || "", r.sure || "",
+          r.telefon, r.not, r.musteriNotu,
+          durumLabel, r.ekleyenAd, r.olusturmaTarihi,
+          r.silenAd, r.silmeTarihi,
+        ]
+      }),
+    ]
+    const today = new Date().toISOString().slice(0, 10)
+    downloadCsv(`rezervasyonlar-${today}.csv`, rows)
+    toast.success(`${sorted.length} kayıt indirildi`)
+  }
+
   async function uncomplete(id: string) {
     const res = await fetch("/api/rezervasyonlar", {
       method: "POST",
@@ -494,10 +530,14 @@ export default function RezervasyonlarPage() {
             LaserTag Rezervasyon
           </h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button variant="outline" onClick={fetchAll} disabled={loading}>
             <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
             Yenile
+          </Button>
+          <Button variant="outline" onClick={exportToCsv} disabled={items.length === 0}>
+            <Download className="h-4 w-4 mr-2" />
+            Excel İndir
           </Button>
           <Button onClick={() => (showForm && !editingId ? closeForm() : openNewForm())}>
             <Plus className="h-4 w-4 mr-2" />
@@ -995,10 +1035,16 @@ function ReservationGroups({
                     </td>
                     <td className="px-4 py-2.5">
                       {r.telefon ? (
-                        <a href={`tel:${r.telefon}`} className="inline-flex items-center gap-1.5 text-blue-600 hover:underline">
-                          <Phone className="h-3.5 w-3.5" />
-                          {r.telefon}
-                        </a>
+                        <div className="inline-flex items-center gap-1">
+                          <a
+                            href={`/musteri/${encodeURIComponent(normalizePhone(r.telefon))}`}
+                            className="inline-flex items-center gap-1.5 text-blue-600 hover:underline"
+                            title="Müşteri profilini aç"
+                          >
+                            <Phone className="h-3.5 w-3.5" />
+                            {r.telefon}
+                          </a>
+                        </div>
                       ) : (
                         <span className="text-muted-foreground">-</span>
                       )}

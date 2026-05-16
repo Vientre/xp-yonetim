@@ -1,11 +1,12 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo, Fragment } from "react"
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Printer, Wallet, Banknote, TableProperties } from "lucide-react"
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Printer, Wallet, Banknote, TableProperties, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn, formatCurrency } from "@/lib/utils"
 import { BUSINESSES } from "@/lib/constants"
+import { downloadCsv } from "@/lib/csv"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -199,15 +200,57 @@ export default function AylikTabloPage() {
 
   const currentBiz = BUSINESSES.find(b => b.id === businessId)
 
+  function exportToCsv() {
+    if (monthEntries.length === 0) return
+    const headers = [
+      "Tarih", "Gün", "Nakit", "Kart", "Bilet Nakit", "Bilet Kart",
+      "Kasadan→Banka", "Bankadan→Kasa",
+      "Toplam Gelir", "Toplam Gider", "Net",
+      "Notlar", "Giren",
+    ]
+    const sorted = [...monthEntries].sort((a, b) => a.date.localeCompare(b.date))
+    const rows = [
+      headers,
+      ...sorted.map((e) => {
+        const date = new Date(e.date + "T00:00:00")
+        const dayName = DAY_NAMES[date.getDay()]
+        return [
+          e.date, dayName,
+          e.cashIncome, e.cardIncome, e.ticketIncome, e.ticketCardIncome,
+          e.kasadanBankaya, e.bankadanKasaya,
+          e.totalIncome, e.totalExpense, e.netAmount,
+          e.notes, e.enteredBy?.name ?? "",
+        ]
+      }),
+      // Toplam satırı
+      [
+        "TOPLAM", "",
+        totals.cash, totals.card, "", "",
+        "", "",
+        totals.income, totals.expense, totals.net,
+        "", "",
+      ],
+    ]
+    const bizName = currentBiz?.name?.replace(/\s+/g, "-").toLowerCase() ?? "isletme"
+    const periodTag = `${year}-${String(month + 1).padStart(2, "0")}`
+    downloadCsv(`aylik-tablo-${bizName}-${periodTag}.csv`, rows)
+  }
+
   return (
     <div className="p-6 space-y-5">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4 print:hidden">
         <h1 className="text-2xl font-bold text-slate-900">Aylık Tablo</h1>
-        <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-2">
-          <Printer className="w-4 h-4" />
-          Yazdır / PDF
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={exportToCsv} disabled={monthEntries.length === 0} className="gap-2">
+            <Download className="w-4 h-4" />
+            Excel İndir
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-2">
+            <Printer className="w-4 h-4" />
+            Yazdır / PDF
+          </Button>
+        </div>
       </div>
 
       <div className="hidden print:block text-center mb-4">
