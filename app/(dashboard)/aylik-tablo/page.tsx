@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo, Fragment } from "react"
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Printer, Wallet, Banknote, TableProperties, Download } from "lucide-react"
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Printer, Wallet, Banknote, TableProperties, Download, Sparkles, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn, formatCurrency } from "@/lib/utils"
@@ -80,6 +80,8 @@ export default function AylikTabloPage() {
   const [settings, setSettings] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
+  const [analysis, setAnalysis] = useState<string>("")
+  const [analysisLoading, setAnalysisLoading] = useState(false)
 
   // Settings'i bir kez çek
   useEffect(() => {
@@ -197,6 +199,47 @@ export default function AylikTabloPage() {
 
   const daysWithEntry = monthEntries.length
   const avgIncome = daysWithEntry > 0 ? totals.income / daysWithEntry : 0
+
+  // Gider kategorileri özeti (tüm günlerin giderleri kategori bazında toplanır)
+  const expenseCategoryTotals = useMemo(() => {
+    const map: Record<string, { name: string; color: string; total: number }> = {}
+    for (const entry of monthEntries) {
+      for (const exp of entry.expenses) {
+        const key = exp.categoryId
+        if (!map[key]) map[key] = { name: exp.category.name, color: exp.category.color, total: 0 }
+        map[key].total += exp.amount
+      }
+    }
+    return Object.values(map).sort((a, b) => b.total - a.total)
+  }, [monthEntries])
+
+  async function fetchAnalysis() {
+    setAnalysisLoading(true)
+    setAnalysis("")
+    try {
+      const res = await fetch("/api/aylik-analiz", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          businessName: currentBiz?.name,
+          monthLabel: `${MONTH_NAMES[month]} ${year}`,
+          totals: { ...totals, avgIncome },
+          expenseCategories: expenseCategoryTotals,
+          daysWithEntry,
+          daysInMonth: daysCount,
+        }),
+      })
+      const data = await res.json()
+      setAnalysis(data.analysis ?? data.error ?? "Analiz alınamadı.")
+    } catch {
+      setAnalysis("Bağlantı hatası oluştu.")
+    } finally {
+      setAnalysisLoading(false)
+    }
+  }
+
+  // Ay veya işletme değişince analizi sıfırla
+  useEffect(() => { setAnalysis("") }, [businessId, month, year])
 
   const currentBiz = BUSINESSES.find(b => b.id === businessId)
 
@@ -443,6 +486,73 @@ export default function AylikTabloPage() {
               </div>
             )}
           </div>
+          {/* ───── GİDER KATEGORİ ÖZETİ ───── */}
+          {expenseCategoryTotals.length > 0 && (
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-slate-700">Gider Kalemleri Özeti — {currentBiz?.name}</h3>
+                <span className="text-sm font-bold text-red-600">{formatCurrency(totals.expense)}</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {expenseCategoryTotals.map((cat) => {
+                  const pct = totals.expense > 0 ? Math.round((cat.total / totals.expense) * 100) : 0
+                  return (
+                    <div key={cat.name} className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
+                          <span className="text-slate-700 font-medium">{cat.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-right">
+                          <span className="text-slate-400">{pct}%</span>
+                          <span className="font-bold text-slate-800">{formatCurrency(cat.total)}</span>
+                        </div>
+                      </div>
+                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: cat.color }} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ───── AI ANALİZ ───── */}
+          <div className="bg-gradient-to-br from-violet-50 to-slate-50 rounded-xl border border-violet-200 shadow-sm p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-violet-500" />
+                <h3 className="text-sm font-semibold text-violet-800">AI Analiz & Yorum</h3>
+                <span className="text-xs text-violet-500 bg-violet-100 px-2 py-0.5 rounded-full">
+                  {MONTH_NAMES[month]} {year}
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-violet-300 text-violet-700 hover:bg-violet-100 gap-1.5"
+                onClick={fetchAnalysis}
+                disabled={analysisLoading || monthEntries.length === 0}
+              >
+                {analysisLoading
+                  ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Analiz ediliyor…</>
+                  : <><Sparkles className="h-3.5 w-3.5" />{analysis ? "Yenile" : "Analiz Oluştur"}</>
+                }
+              </Button>
+            </div>
+
+            {analysis ? (
+              <p className="text-sm text-slate-700 leading-relaxed">{analysis}</p>
+            ) : (
+              <p className="text-xs text-slate-400 italic">
+                {monthEntries.length === 0
+                  ? "Bu ay için kayıt bulunamadı."
+                  : "Bu ayın verilerini analiz etmek için butona tıklayın."}
+              </p>
+            )}
+          </div>
+
         </TabsContent>
 
         {/* ───── KASA TAB ───── */}
