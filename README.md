@@ -1,36 +1,88 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# XP Yönetim Sistemi
 
-## Getting Started
+Google Sheets veri kaynağı kullanan, çok işletmeli operasyon ve muhasebe yönetim paneli.
 
-First, run the development server:
+## Özellikler
+
+- Günlük nakit, kart, bilet, gider ve kasa/banka transfer kaydı
+- Dashboard, aylık tablo, rapor ve CSV/ZIP yedekleme
+- Personel, puantaj, yemek siparişi ve maaş bordrosu
+- Kurs öğrenci/ödeme/gider takibi
+- LaserTag rezervasyonları ve müşteri geçmişi
+- Admin, manager ve staff rolleriyle işletme bazlı erişim
+- WhatsApp ve Telegram bildirimleri
+- Anthropic Claude ile aylık finans analizi
+- Vercel Cron ile rezervasyon özeti ve hatırlatmalar
+
+## Teknoloji
+
+- Next.js 16, React 19 ve TypeScript
+- Tailwind CSS 4, Radix UI ve Recharts
+- Auth.js / NextAuth 5
+- Google Sheets API
+- Zod, AI SDK ve Anthropic
+
+## Hızlı başlangıç
+
+Gereksinimler:
+
+- Node.js 20 veya üzeri
+- Bir Google Cloud service account
+- Google Sheets API etkin bir Google Cloud projesi
+- Uygulamaya veri kaynağı olacak bir Google Sheet
+
+Bağımlılıkları yükleyin:
+
+```bash
+npm ci
+```
+
+`.env.example` dosyasını `.env.local` olarak kopyalayıp gerekli değerleri doldurun. Ardından:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Uygulama varsayılan olarak [http://localhost:3000](http://localhost:3000) adresinde açılır.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Ayrıntılı kurulum için [KURULUM.md](./KURULUM.md), Sheet sekmeleri için
+[GOOGLE_SHEETS_KURULUM.md](./GOOGLE_SHEETS_KURULUM.md) dosyasını kullanın.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Komutlar
 
-## Learn More
+```bash
+npm run dev     # Geliştirme sunucusu
+npm run build   # Üretim derlemesi ve TypeScript kontrolü
+npm run start   # Üretim sunucusu
+npm run lint    # ESLint kontrolü
+npm test        # Otomatik birim testleri
+npm run check   # Lint + test + TypeScript kontrolü
+```
 
-To learn more about Next.js, take a look at the following resources:
+Uygulama PostgreSQL veya Prisma kullanmaz. Kalıcı veriler Google Sheets üzerinde tutulur.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Ana dizinler
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```text
+app/                 Sayfalar ve API route handler'ları
+components/          Ortak arayüz ve layout bileşenleri
+lib/sheets.ts        Google Sheets veri erişimi
+lib/auth.ts          Credentials tabanlı kimlik doğrulama
+lib/auth-utils.ts    Rol ve işletme erişim kontrolleri
+lib/constants.ts     İşletmeler, kategoriler ve Sheet sekme adları
+vercel.json          Zamanlanmış Vercel Cron görevleri
+```
 
-## Deploy on Vercel
+## Dağıtım
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Vercel projesine `.env.example` içindeki gerekli değişkenleri ekleyin. Google Sheet'i
+service account e-posta adresiyle `Editor` yetkisinde paylaşın. Cron uçlarını korumak
+için üretimde `CRON_SECRET` tanımlayın.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Güvenlik sınırları
+
+- Başarısız girişler IP + e-posta ve e-posta bazında 15 dakikada 5 denemeyle sınırlıdır.
+- Aylık AI analizi kullanıcı başına 10 dakikada 5 istekle sınırlıdır.
+- Bu sınırlar uygulama instance'ının belleğinde tutulur. Tek instance için etkilidir;
+  birden fazla Vercel instance'ında tam dağıtık koruma gerektiğinde Redis tabanlı bir
+  limiter kullanılmalıdır.

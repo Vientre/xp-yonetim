@@ -6,8 +6,8 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthUser } from "@/lib/auth-utils"
-import { getRows, getSettings } from "@/lib/sheets"
-import { TABS, BUSINESSES, EXPENSE_CATEGORIES, getCategoryById, getBusinessName } from "@/lib/constants"
+import { getRowsBatch } from "@/lib/sheets"
+import { TABS, BUSINESSES, getCategoryById, getBusinessName } from "@/lib/constants"
 
 export async function GET(req: NextRequest) {
   const user = await getAuthUser()
@@ -83,12 +83,14 @@ export async function GET(req: NextRequest) {
   }
 
   // Fetch all data in parallel
-  const [gelirRows, giderRows, yemekRows, settings] = await Promise.all([
-    getRows(TABS.DAILY_INCOME),
-    getRows(TABS.EXPENSES),
-    getRows(TABS.MEALS),
-    getSettings(),
-  ])
+  const rows = await getRowsBatch([
+    TABS.DAILY_INCOME,
+    TABS.EXPENSES,
+    TABS.MEALS,
+  ] as const)
+  const gelirRows = rows[TABS.DAILY_INCOME]
+  const giderRows = rows[TABS.EXPENSES]
+  const yemekRows = rows[TABS.MEALS]
 
   // Filter income rows by date and business
   let filtered = gelirRows.filter((r) => r[1] >= fromDate && r[1] <= toDate)

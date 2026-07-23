@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthUser, hasBusinessAccess, getAccessibleBusinessIds } from "@/lib/auth-utils"
 import { getRows, appendRow, updateRowByIndex, getSettings, generateId } from "@/lib/sheets"
-import { TABS, BUSINESSES, getBusinessName } from "@/lib/constants"
+import { TABS, getBusinessName } from "@/lib/constants"
 import { z } from "zod"
 
 const mealSchema = z.object({

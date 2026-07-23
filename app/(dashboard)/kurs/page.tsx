@@ -1,125 +1,25 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { Plus, Trash2, Search, Printer, GraduationCap, ChevronLeft, ChevronRight, Receipt, AlertTriangle, X } from "lucide-react"
+import { Plus, Trash2, Search, Printer, GraduationCap, ChevronLeft, ChevronRight, Receipt } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
 import { cn, formatCurrency } from "@/lib/utils"
+import { PaymentConfirmDialog as ConfirmDialog } from "@/components/course/payment-confirm-dialog"
+import { CourseStudentTable } from "@/components/course/course-student-table"
+import type {
+  CourseExpense as Expense,
+  CoursePayment as Payment,
+  CourseStudent as Student,
+  PendingPaymentToggle as PendingToggle,
+} from "@/components/course/types"
+import {
+  formatCourseDate as formatDate,
+  getMonthRange,
+  todayISO,
+} from "@/components/course/utils"
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type Payment = { paid: boolean; date: string }
-
-type Student = {
-  id: string
-  name: string
-  monthlyFee: number
-  createdAt: string
-  sinif: string
-  payments: Record<string, Payment>
-}
-
-type Expense = {
-  id: string
-  tarih: string
-  detay: string
-  tutar: number
-  olusturmaTarihi: string
-}
-
-// Onay dialogu için bekleyen toggle
-type PendingToggle = {
-  studentId: string
-  studentName: string
-  month: string
-  monthLabel: string
-  current: Payment | undefined
-  newPaid: boolean
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const TR_MONTHS = [
-  "Ocak","Şubat","Mart","Nisan","Mayıs","Haziran",
-  "Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık",
-]
-
-function formatDate(iso: string) {
-  if (!iso) return ""
-  const [y, m, d] = iso.split("-")
-  return `${d}.${m}.${y}`
-}
-
-function todayISO() {
-  return new Date().toISOString().split("T")[0]
-}
-
-function getMonthRange(startYear: number, startMonth: number, count: number) {
-  const result = []
-  for (let i = 0; i < count; i++) {
-    let m = startMonth + i
-    let y = startYear
-    while (m > 11) { m -= 12; y++ }
-    const key = `${y}-${String(m + 1).padStart(2, "0")}`
-    result.push({ year: y, month: m, key, label: `${TR_MONTHS[m]} ${y}` })
-  }
-  return result
-}
-
-// ─── Onay Dialogu ─────────────────────────────────────────────────────────────
-
-function ConfirmDialog({
-  pending,
-  onConfirm,
-  onCancel,
-}: {
-  pending: PendingToggle
-  onConfirm: () => void
-  onCancel: () => void
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl p-6 mx-4 w-full max-w-sm animate-in fade-in zoom-in-95 duration-150">
-        <div className="flex items-start gap-3 mb-4">
-          <div className={cn(
-            "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
-            pending.newPaid ? "bg-emerald-100" : "bg-red-100"
-          )}>
-            <AlertTriangle className={cn("w-5 h-5", pending.newPaid ? "text-emerald-600" : "text-red-600")} />
-          </div>
-          <div>
-            <h3 className="font-semibold text-slate-900 text-base">Emin misiniz?</h3>
-            <p className="text-sm text-slate-500 mt-0.5">
-              <span className="font-medium text-slate-700">{pending.studentName}</span> —{" "}
-              <span className="font-medium">{pending.monthLabel}</span>
-            </p>
-          </div>
-          <button onClick={onCancel} className="ml-auto p-1 rounded-md hover:bg-slate-100 text-slate-400">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <p className="text-sm text-slate-600 mb-5 pl-13">
-          {pending.newPaid
-            ? "Bu ay ödeme yapıldı olarak işaretlenecek."
-            : "Bu ay ödeme ödenmedi olarak geri alınacak."}
-        </p>
-
-        <div className="flex gap-2 justify-end">
-          <Button variant="outline" size="sm" onClick={onCancel}>İptal</Button>
-          <Button
-            size="sm"
-            className={cn(pending.newPaid ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700")}
-            onClick={onConfirm}
-          >
-            {pending.newPaid ? "✓ Ödendi Yap" : "✗ Geri Al"}
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -553,132 +453,19 @@ export default function KursPage() {
         </div>
       </div>
 
-      {/* Tablo */}
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center h-40 text-slate-400 text-sm">Yükleniyor…</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="text-left px-4 py-3 text-slate-500 font-semibold w-8">#</th>
-                  <th className="text-left px-4 py-3 text-slate-600 font-semibold">Ad Soyad</th>
-                  <th className="text-center px-3 py-3 text-slate-600 font-semibold">Sınıf</th>
-                  <th className="text-right px-4 py-3 text-slate-600 font-semibold">Aylık Ücret</th>
-                  {months.map((mo) => (
-                    <th key={mo.key} className="text-center px-4 py-3 text-slate-600 font-semibold min-w-[130px]">
-                      {mo.label}
-                    </th>
-                  ))}
-                  <th className="text-right px-4 py-3 text-emerald-700 font-semibold">Ödenen</th>
-                  <th className="text-right px-4 py-3 text-red-700 font-semibold">Borç</th>
-                  <th className="px-3 py-3 print:hidden w-8" />
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={months.length + 6} className="text-center py-12 text-slate-400 text-sm italic">
-                      {students.length === 0 ? "Henüz öğrenci eklenmedi." : "Sonuç bulunamadı."}
-                    </td>
-                  </tr>
-                ) : (
-                  filtered.map((student, idx) => {
-                    const paidCount = months.filter((mo) => student.payments[mo.key]?.paid).length
-                    const totalPaid = paidCount * student.monthlyFee
-                    const totalDebt = (months.length - paidCount) * student.monthlyFee
-                    return (
-                      <tr key={student.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3 text-slate-400 text-xs">{idx + 1}</td>
-                        <td className="px-4 py-3 font-medium text-slate-800">{student.name}</td>
-                        <td className="px-3 py-3 text-center">
-                          {student.sinif ? (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-violet-100 text-violet-700">
-                              {student.sinif}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300 text-xs">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-right text-slate-600 tabular-nums">{formatCurrency(student.monthlyFee)}</td>
-
-                        {months.map((mo) => {
-                          const payment = student.payments[mo.key]
-                          const paid = payment?.paid ?? false
-                          const payDate = payment?.date ?? ""
-                          const toggleKey = `${student.id}-${mo.key}`
-                          const isToggling = toggling === toggleKey
-                          return (
-                            <td key={mo.key} className="px-4 py-3 text-center">
-                              <button
-                                onClick={() => requestToggle(student, mo, payment)}
-                                disabled={isToggling}
-                                title={paid ? `Ödeme tarihi: ${formatDate(payDate)} — Geri almak için tıkla` : "Ödendi olarak işaretle"}
-                                className={cn(
-                                  "inline-flex flex-col items-center justify-center px-3 py-1.5 rounded-lg text-xs font-semibold transition-all min-w-[100px]",
-                                  paid
-                                    ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
-                                    : "bg-red-100 text-red-700 hover:bg-red-200",
-                                  isToggling && "opacity-50 cursor-wait"
-                                )}
-                              >
-                                <span>{isToggling ? "…" : paid ? "✓ Ödendi" : "✗ Ödenmedi"}</span>
-                                {paid && payDate && (
-                                  <span className="text-[10px] font-normal opacity-70 mt-0.5">
-                                    {formatDate(payDate)}
-                                  </span>
-                                )}
-                              </button>
-                            </td>
-                          )
-                        })}
-
-                        <td className="px-4 py-3 text-right font-semibold text-emerald-700 tabular-nums">
-                          {totalPaid > 0 ? formatCurrency(totalPaid) : <span className="text-slate-300">—</span>}
-                        </td>
-                        <td className="px-4 py-3 text-right font-semibold text-red-600 tabular-nums">
-                          {totalDebt > 0 ? formatCurrency(totalDebt) : <span className="text-slate-300">—</span>}
-                        </td>
-                        <td className="px-3 py-3 print:hidden">
-                          <button
-                            onClick={() => deleteStudent(student)}
-                            disabled={deleting === student.id}
-                            className="p-1.5 rounded-md text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    )
-                  })
-                )}
-              </tbody>
-
-              {filtered.length > 0 && (
-                <tfoot>
-                  <tr className="border-t-2 border-slate-200 bg-slate-50">
-                    <td colSpan={4} className="px-4 py-3 font-bold text-slate-700">
-                      TOPLAM ({filtered.length} öğrenci{selectedSinif ? ` · ${selectedSinif}` : ""})
-                    </td>
-                    {months.map((mo) => {
-                      const paidCount = filtered.filter((s) => s.payments[mo.key]?.paid).length
-                      return (
-                        <td key={mo.key} className="px-4 py-3 text-center">
-                          <span className="text-xs text-slate-500">{paidCount}/{filtered.length} ödedi</span>
-                        </td>
-                      )
-                    })}
-                    <td className="px-4 py-3 text-right font-bold text-emerald-700 tabular-nums">{formatCurrency(totalCollected)}</td>
-                    <td className="px-4 py-3 text-right font-bold text-red-700 tabular-nums">{formatCurrency(totalMissing)}</td>
-                    <td className="print:hidden" />
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
-        )}
-      </div>
+      <CourseStudentTable
+        loading={loading}
+        students={students}
+        filteredStudents={filtered}
+        months={months}
+        toggling={toggling}
+        deleting={deleting}
+        selectedClass={selectedSinif}
+        totalCollected={totalCollected}
+        totalMissing={totalMissing}
+        onRequestToggle={requestToggle}
+        onDeleteStudent={(student) => void deleteStudent(student)}
+      />
     </div>
   )
 }

@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthUser } from "@/lib/auth-utils"
-import { getRows, updateRowByIndex, deleteRowByIndex } from "@/lib/sheets"
+import { getRows, deleteRowByIndex } from "@/lib/sheets"
 import { TABS } from "@/lib/constants"
 
 async function requireAdmin() {

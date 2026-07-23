@@ -5,8 +5,9 @@
  */
 
 import type { NextAuthConfig } from "next-auth"
+import type { Role } from "@/lib/constants"
 
-export const authConfig: NextAuthConfig = {
+export const authConfig: Omit<NextAuthConfig, "providers"> = {
   session: { strategy: "jwt" },
   pages: {
     signIn: "/login",
@@ -32,19 +33,18 @@ export const authConfig: NextAuthConfig = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id
-        token.role = (user as any).role
-        token.businesses = (user as any).businesses
+        token.role = user.role
+        token.businesses = user.businesses
       }
       return token
     },
     async session({ session, token }) {
       if (token) {
         session.user.id = token.id as string
-        ;(session.user as any).role = token.role
-        ;(session.user as any).businesses = token.businesses
+        session.user.role = token.role as Role
+        session.user.businesses = token.businesses as string[]
       }
       return session
     },
   },
-  providers: [], // Credentials provider added in lib/auth.ts
 }

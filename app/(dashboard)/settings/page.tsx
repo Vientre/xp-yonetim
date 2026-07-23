@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Settings, Save, Plus, Trash2, Building2, Wallet, Download, ShieldCheck } from "lucide-react"
+import { Settings, Save, Plus, Building2, Wallet, Download, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 
@@ -16,9 +16,10 @@ interface Category { id: string; name: string; color: string; isActive: boolean;
 interface Business {
   id: string; name: string
 }
+type SettingsMap = Record<string, string>
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<any>({})
+  const [settings, setSettings] = useState<SettingsMap>({})
   const [categories, setCategories] = useState<Category[]>([])
   const [businesses, setBusinesses] = useState<Business[]>([])
   const [loading, setLoading] = useState(false)
@@ -111,7 +112,7 @@ export default function SettingsPage() {
                     type="number"
                     step="0.01"
                     value={settings.yemekFiyati ?? "50"}
-                    onChange={(e) => setSettings((s: any) => ({ ...s, yemekFiyati: e.target.value }))}
+                    onChange={(e) => setSettings((s) => ({ ...s, yemekFiyati: e.target.value }))}
                     className="text-right"
                   />
                   <p className="text-xs text-muted-foreground">Yemek siparişinde varsayılan birim fiyat</p>
@@ -124,10 +125,10 @@ export default function SettingsPage() {
                     type="number"
                     step="0.01"
                     value={settings.saatlikUcret ?? "100"}
-                    onChange={(e) => setSettings((s: any) => ({ ...s, saatlikUcret: e.target.value }))}
+                    onChange={(e) => setSettings((s) => ({ ...s, saatlikUcret: e.target.value }))}
                     className="text-right"
                   />
-                  <p className="text-xs text-muted-foreground">Puantaj raporlarında referans saatlik ücret</p>
+                  <p className="text-xs text-muted-foreground">Kişisel ücreti 0 olan çalışanlarda kullanılır</p>
                 </div>
 
                 {/* Yüksek Tutar Uyarı */}
@@ -136,7 +137,7 @@ export default function SettingsPage() {
                   <Input
                     type="number"
                     value={settings.uyariLimiti ?? "10000"}
-                    onChange={(e) => setSettings((s: any) => ({ ...s, uyariLimiti: e.target.value }))}
+                    onChange={(e) => setSettings((s) => ({ ...s, uyariLimiti: e.target.value }))}
                     className="text-right"
                   />
                   <p className="text-xs text-muted-foreground">Bu tutarın üzerinde uyarı göster</p>
@@ -169,7 +170,7 @@ export default function SettingsPage() {
                     <Switch
                       checked={settings[setting.key] === "true"}
                       onCheckedChange={(v) =>
-                        setSettings((s: any) => ({ ...s, [setting.key]: String(v) }))
+                        setSettings((s) => ({ ...s, [setting.key]: String(v) }))
                       }
                     />
                   </div>
@@ -213,7 +214,7 @@ export default function SettingsPage() {
                           step="0.01"
                           placeholder="0.00"
                           value={settings[kasaKey] ?? ""}
-                          onChange={(e) => setSettings((s: any) => ({ ...s, [kasaKey]: e.target.value }))}
+                          onChange={(e) => setSettings((s) => ({ ...s, [kasaKey]: e.target.value }))}
                           className="text-right"
                         />
                       </div>
@@ -224,7 +225,7 @@ export default function SettingsPage() {
                           step="0.01"
                           placeholder="0.00"
                           value={settings[bankaKey] ?? ""}
-                          onChange={(e) => setSettings((s: any) => ({ ...s, [bankaKey]: e.target.value }))}
+                          onChange={(e) => setSettings((s) => ({ ...s, [bankaKey]: e.target.value }))}
                           className="text-right"
                         />
                       </div>
@@ -233,7 +234,7 @@ export default function SettingsPage() {
                         <Input
                           type="date"
                           value={settings[tarihKey] ?? new Date().toISOString().slice(0, 10)}
-                          onChange={(e) => setSettings((s: any) => ({ ...s, [tarihKey]: e.target.value }))}
+                          onChange={(e) => setSettings((s) => ({ ...s, [tarihKey]: e.target.value }))}
                         />
                       </div>
                     </div>

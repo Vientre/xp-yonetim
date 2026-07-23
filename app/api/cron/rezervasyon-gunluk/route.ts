@@ -13,8 +13,8 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
-import { getRows } from "@/lib/sheets"
-import { TABS, BUSINESSES, getBusinessName } from "@/lib/constants"
+import { getRowsBatch } from "@/lib/sheets"
+import { TABS, BUSINESSES } from "@/lib/constants"
 import { sendWhatsAppMessage } from "@/lib/whatsapp"
 
 export const runtime = "nodejs"
@@ -176,10 +176,9 @@ export async function GET(req: NextRequest) {
   const yesterday = yesterdayIst.toISOString().slice(0, 10)
 
   // Verileri paralel çek
-  const [gelirRows, rezervasyonRows] = await Promise.all([
-    getRows(TABS.DAILY_INCOME).catch(() => [] as string[][]),
-    getRows(TABS.RESERVATIONS).catch(() => [] as string[][]),
-  ])
+  const rows = await getRowsBatch([TABS.DAILY_INCOME, TABS.RESERVATIONS] as const)
+  const gelirRows = rows[TABS.DAILY_INCOME]
+  const rezervasyonRows = rows[TABS.RESERVATIONS]
 
   // 1) Dünkü gelir özeti
   const summaryMsg = buildSummaryMessage(yesterday, gelirRows)

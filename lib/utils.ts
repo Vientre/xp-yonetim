@@ -53,7 +53,7 @@ export function getDateRange(period: "today" | "week" | "month" | "year"): { fro
   const to = new Date(now)
   to.setHours(23, 59, 59, 999)
 
-  let from = new Date(now)
+  const from = new Date(now)
   from.setHours(0, 0, 0, 0)
 
   switch (period) {
@@ -73,7 +73,7 @@ export function getDateRange(period: "today" | "week" | "month" | "year"): { fro
   return { from, to }
 }
 
-// Decimal'i number'a çevir (Prisma Decimal tipi için)
+// Bilinmeyen bir sayısal değeri güvenli biçimde number'a çevir
 export function toNumber(val: unknown): number {
   if (val === null || val === undefined) return 0
   return typeof val === "object" ? parseFloat(val.toString()) : Number(val)

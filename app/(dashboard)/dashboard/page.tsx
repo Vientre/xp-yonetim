@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -50,8 +50,6 @@ import {
   Pie,
   Cell,
   Legend,
-  LineChart,
-  Line,
   Area,
   AreaChart,
 } from "recharts"
@@ -153,7 +151,7 @@ export default function DashboardPage() {
     return `/api/dashboard?period=${p}`
   }
 
-  async function fetchData(p = period) {
+  const fetchData = useCallback(async (p = period) => {
     setLoading(true)
     try {
       const res = await fetch(buildApiUrl(p))
@@ -161,14 +159,13 @@ export default function DashboardPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [period])
 
   function handlePeriodChange(p: string) {
     setPeriod(p)
-    fetchData(p)
   }
 
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => { void fetchData() }, [fetchData])
 
   // Merge businessSummary with all businesses (show 0 for missing ones)
   const businessRows: BusinessSummary[] = ALL_BUSINESSES.map((b) => {

@@ -8,8 +8,8 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthUser } from "@/lib/auth-utils"
-import { getRows } from "@/lib/sheets"
-import { TABS, BUSINESSES, getCategoryById, getBusinessName } from "@/lib/constants"
+import { getRowsBatch } from "@/lib/sheets"
+import { TABS, BUSINESSES, getCategoryById } from "@/lib/constants"
 
 export async function GET(req: NextRequest) {
   const user = await getAuthUser()
@@ -24,15 +24,14 @@ export async function GET(req: NextRequest) {
   }
 
   // Veriyi paralel çek
-  const [gelirRows, giderRows] = await Promise.all([
-    getRows(TABS.DAILY_INCOME),
-    getRows(TABS.EXPENSES),
-  ])
+  const rows = await getRowsBatch([TABS.DAILY_INCOME, TABS.EXPENSES] as const)
+  const gelirRows = rows[TABS.DAILY_INCOME]
+  const giderRows = rows[TABS.EXPENSES]
 
   // Tarih filtresi + rol filtresi
   const userBizIds = user.role === "admin"
     ? BUSINESSES.map((b) => b.id)
-    : (user as any).businesses ?? []
+    : user.businesses
 
   const filtered = gelirRows.filter((r) => {
     if (!r[1]) return false

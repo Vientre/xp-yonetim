@@ -1,17 +1,198 @@
 /**
- * Payroll API
- * GET ?month=YYYY-MM&businessId=...
- * Returns per-employee summary for the given month from Puantaj tab.
+ * Weekly payroll API
  *
- * Puantaj columns:
- * id | tarih | personelAdi | isletme | saat | yemek | tip | kesinti | notlar | girenKisiId | girenKisiAdi | olusturmaTarihi | mesai
- * 0  |   1   |      2     |    3    |   4  |   5   |  6  |    7    |    8   |      9      |      10      |       11        |  12
+ * GET  ?weekStart=YYYY-MM-DD&businessId=...
+ * POST { weekStart, employeeName, amount, paymentMethod, note, businessId? }
+ *
+ * Pay period is Monday-Sunday. Payments are kept as an append-only ledger in
+ * the MaasOdemeleri sheet so partial payments and an audit trail are preserved.
  */
 
 import { NextRequest, NextResponse } from "next/server"
+import { z } from "zod"
 import { getAuthUser } from "@/lib/auth-utils"
-import { getRows, getSettings } from "@/lib/sheets"
+import {
+  appendRow,
+  ensureTab,
+  generateId,
+  getRows,
+  getRowsBatch,
+  settingsFromRows,
+} from "@/lib/sheets"
 import { TABS, getBusinessName } from "@/lib/constants"
+import {
+  addIsoDays,
+  calculatePay,
+  isCompletedPayrollWeek,
+  isMondayIso,
+  roundMoney,
+} from "@/lib/payroll"
+
+const isoDate = /^\d{4}-\d{2}-\d{2}$/
+
+const paymentSchema = z.object({
+  weekStart: z.string().regex(isoDate),
+  employeeName: z.string().trim().min(1),
+  amount: z.number().positive(),
+  paymentMethod: z.enum(["nakit", "banka"]),
+  note: z.string().trim().max(300).optional().default(""),
+  businessId: z.string().optional(),
+})
+
+type PayrollRecord = {
+  date: string
+  business: string
+  hours: number
+  meal: number
+  tip: number
+  deduction: number
+  overtime: number
+  notes: string
+}
+
+type EmployeePayroll = {
+  name: string
+  businesses: Set<string>
+  days: number
+  totalHours: number
+  totalMeal: number
+  totalTip: number
+  totalDeduction: number
+  totalOvertime: number
+  hourlyRate: number
+  overtimeMultiplier: number
+  records: PayrollRecord[]
+}
+
+async function calculatePayroll(weekStart: string, businessId?: string | null) {
+  const weekEnd = addIsoDays(weekStart, 6)
+  const [requiredRows, paymentRows] = await Promise.all([
+    getRowsBatch([TABS.ATTENDANCE, TABS.SETTINGS, TABS.EMPLOYEES] as const),
+    getRows(TABS.PAYROLL_PAYMENTS).catch(() => [] as string[][]),
+  ])
+  const attendanceRows = requiredRows[TABS.ATTENDANCE]
+  const settings = settingsFromRows(requiredRows[TABS.SETTINGS])
+  const employeeRows = requiredRows[TABS.EMPLOYEES]
+
+  const defaultHourlyRate = parseFloat(settings.saatlikUcret || "100")
+  const employeeRates = new Map<string, { hourlyRate: number; overtimeMultiplier: number }>()
+  for (const row of employeeRows) {
+    const name = (row[1] ?? "").trim().toLocaleLowerCase("tr-TR")
+    if (!name) continue
+    employeeRates.set(name, {
+      hourlyRate: parseFloat(row[4] || "0") || defaultHourlyRate,
+      overtimeMultiplier: parseFloat(row[5] || "2") || 2,
+    })
+  }
+
+  const map = new Map<string, EmployeePayroll>()
+  for (const row of attendanceRows) {
+    const date = row[1] ?? ""
+    if (!row[0] || date < weekStart || date > weekEnd) continue
+    if (businessId && row[3] !== businessId) continue
+
+    const name = (row[2] ?? "?").trim()
+    const key = name.toLocaleLowerCase("tr-TR")
+    const rate = employeeRates.get(key) ?? {
+      hourlyRate: defaultHourlyRate,
+      overtimeMultiplier: 2,
+    }
+    const current = map.get(key) ?? {
+      name,
+      businesses: new Set<string>(),
+      days: 0,
+      totalHours: 0,
+      totalMeal: 0,
+      totalTip: 0,
+      totalDeduction: 0,
+      totalOvertime: 0,
+      hourlyRate: rate.hourlyRate,
+      overtimeMultiplier: rate.overtimeMultiplier,
+      records: [],
+    }
+
+    const hours = parseFloat(row[4] || "0")
+    const meal = parseFloat(row[5] || "0")
+    const tip = parseFloat(row[6] || "0")
+    const deduction = parseFloat(row[7] || "0")
+    const overtime = parseFloat(row[12] || "0")
+    current.days += 1
+    current.businesses.add(row[3] ?? "")
+    current.totalHours += hours
+    current.totalMeal += meal
+    current.totalTip += tip
+    current.totalDeduction += deduction
+    current.totalOvertime += overtime
+    current.records.push({
+      date,
+      business: getBusinessName(row[3] ?? ""),
+      hours,
+      meal,
+      tip,
+      deduction,
+      overtime,
+      notes: row[8] ?? "",
+    })
+    map.set(key, current)
+  }
+
+  const paidByEmployee = new Map<string, number>()
+  for (const row of paymentRows) {
+    if (row[1] !== weekStart) continue
+    if (businessId && row[4] && row[4] !== businessId) continue
+    const key = (row[3] ?? "").trim().toLocaleLowerCase("tr-TR")
+    paidByEmployee.set(key, (paidByEmployee.get(key) ?? 0) + parseFloat(row[5] || "0"))
+  }
+
+  const employees = Array.from(map.entries()).map(([key, employee]) => {
+    const pay = calculatePay({
+      hours: employee.totalHours,
+      overtimeHours: employee.totalOvertime,
+      hourlyRate: employee.hourlyRate,
+      overtimeMultiplier: employee.overtimeMultiplier,
+      tip: employee.totalTip,
+      deduction: employee.totalDeduction,
+      paidAmount: paidByEmployee.get(key) ?? 0,
+    })
+
+    return {
+      name: employee.name,
+      businesses: Array.from(employee.businesses).filter(Boolean).map(getBusinessName),
+      days: employee.days,
+      totalHours: Math.round(employee.totalHours * 10) / 10,
+      hourlyRate: employee.hourlyRate,
+      basePay: pay.basePay,
+      totalOvertime: Math.round(employee.totalOvertime * 10) / 10,
+      overtimeMultiplier: employee.overtimeMultiplier,
+      overtimePay: pay.overtimePay,
+      totalMeal: roundMoney(employee.totalMeal),
+      totalTip: roundMoney(employee.totalTip),
+      totalDeduction: roundMoney(employee.totalDeduction),
+      netPay: pay.netPay,
+      paidAmount: pay.paidAmount,
+      remainingAmount: pay.remainingAmount,
+      status: pay.status,
+      records: employee.records.sort((a, b) => a.date.localeCompare(b.date)),
+    }
+  }).sort((a, b) => b.remainingAmount - a.remainingAmount)
+
+  const totals = {
+    employees: employees.length,
+    totalHours: Math.round(employees.reduce((sum, item) => sum + item.totalHours, 0) * 10) / 10,
+    netPay: roundMoney(employees.reduce((sum, item) => sum + item.netPay, 0)),
+    paidAmount: roundMoney(employees.reduce((sum, item) => sum + item.paidAmount, 0)),
+    remainingAmount: roundMoney(employees.reduce((sum, item) => sum + item.remainingAmount, 0)),
+  }
+
+  return {
+    weekStart,
+    weekEnd,
+    paymentDate: addIsoDays(weekEnd, 1),
+    defaultHourlyRate,
+    employees,
+    totals,
+  }
+}
 
 export async function GET(req: NextRequest) {
   const user = await getAuthUser()
@@ -19,93 +200,102 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Sadece yöneticiler" }, { status: 403 })
   }
 
-  const { searchParams } = new URL(req.url)
-  const now = new Date()
-  const month = searchParams.get("month") ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
-  const businessId = searchParams.get("businessId")
-
-  const [rows, settings] = await Promise.all([
-    getRows(TABS.ATTENDANCE),
-    getSettings(),
-  ])
-
-  const saatlikUcret = parseFloat(settings.saatlikUcret ?? "100")
-
-  let filtered = rows.filter((r) => {
-    if (!r[0] || !r[1]) return false
-    if (!r[1].startsWith(month)) return false
-    if (businessId && r[3] !== businessId) return false
-    return true
-  })
-
-  // Group by employee name
-  const map: Record<string, {
-    name: string
-    businesses: Set<string>
-    days: number
-    totalHours: number
-    totalMeal: number
-    totalTip: number
-    totalDeduction: number
-    totalMesai: number
-    records: Array<{ date: string; business: string; hours: number; meal: number; tip: number; deduction: number; mesai: number; notes: string }>
-  }> = {}
-
-  for (const row of filtered) {
-    const name = row[2] ?? "?"
-    if (!map[name]) {
-      map[name] = { name, businesses: new Set(), days: 0, totalHours: 0, totalMeal: 0, totalTip: 0, totalDeduction: 0, totalMesai: 0, records: [] }
-    }
-    map[name].days += 1
-    map[name].businesses.add(row[3] ?? "")
-    map[name].totalHours += parseFloat(row[4] || "0")
-    map[name].totalMeal += parseFloat(row[5] || "0")
-    map[name].totalTip += parseFloat(row[6] || "0")
-    map[name].totalDeduction += parseFloat(row[7] || "0")
-    map[name].totalMesai += parseFloat(row[12] || "0")
-    map[name].records.push({
-      date: row[1],
-      business: getBusinessName(row[3] ?? ""),
-      hours: parseFloat(row[4] || "0"),
-      meal: parseFloat(row[5] || "0"),
-      tip: parseFloat(row[6] || "0"),
-      deduction: parseFloat(row[7] || "0"),
-      mesai: parseFloat(row[12] || "0"),
-      notes: row[8] ?? "",
-    })
+  const weekStart = req.nextUrl.searchParams.get("weekStart") ?? ""
+  if (!isMondayIso(weekStart)) {
+    return NextResponse.json({ error: "Hafta başlangıcı Pazartesi olmalıdır" }, { status: 400 })
   }
 
-  const employees = Object.values(map).map((e) => {
-    const basePay = Math.round(e.totalHours * saatlikUcret * 100) / 100
-    const mesaiOdeme = Math.round(e.totalMesai * saatlikUcret * 2 * 100) / 100
-    const netPay = Math.round((basePay + mesaiOdeme + e.totalTip - e.totalDeduction) * 100) / 100
-    return {
-      name: e.name,
-      businesses: Array.from(e.businesses).filter(Boolean).map(getBusinessName),
-      days: e.days,
-      totalHours: Math.round(e.totalHours * 10) / 10,
-      basePay,
-      totalMesai: Math.round(e.totalMesai * 10) / 10,
-      mesaiOdeme,
-      totalMeal: Math.round(e.totalMeal * 100) / 100,
-      totalTip: Math.round(e.totalTip * 100) / 100,
-      totalDeduction: Math.round(e.totalDeduction * 100) / 100,
-      netPay,
-      records: e.records.sort((a, b) => a.date.localeCompare(b.date)),
-    }
-  }).sort((a, b) => b.totalHours - a.totalHours)
+  const businessId = req.nextUrl.searchParams.get("businessId")
+  return NextResponse.json(await calculatePayroll(weekStart, businessId))
+}
 
-  const totals = {
-    days: employees.reduce((s, e) => s + e.days, 0),
-    totalHours: Math.round(employees.reduce((s, e) => s + e.totalHours, 0) * 10) / 10,
-    basePay: Math.round(employees.reduce((s, e) => s + e.basePay, 0) * 100) / 100,
-    totalMesai: Math.round(employees.reduce((s, e) => s + e.totalMesai, 0) * 10) / 10,
-    mesaiOdeme: Math.round(employees.reduce((s, e) => s + e.mesaiOdeme, 0) * 100) / 100,
-    totalMeal: Math.round(employees.reduce((s, e) => s + e.totalMeal, 0) * 100) / 100,
-    totalTip: Math.round(employees.reduce((s, e) => s + e.totalTip, 0) * 100) / 100,
-    totalDeduction: Math.round(employees.reduce((s, e) => s + e.totalDeduction, 0) * 100) / 100,
-    netPay: Math.round(employees.reduce((s, e) => s + e.netPay, 0) * 100) / 100,
+export async function POST(req: NextRequest) {
+  const user = await getAuthUser()
+  if (!user || user.role !== "admin") {
+    return NextResponse.json({ error: "Sadece yöneticiler" }, { status: 403 })
   }
 
-  return NextResponse.json({ employees, totals, saatlikUcret, month })
+  const parsed = paymentSchema.safeParse(await req.json())
+  if (!parsed.success || !isMondayIso(parsed.data?.weekStart ?? "")) {
+    return NextResponse.json({ error: "Geçersiz ödeme bilgisi" }, { status: 400 })
+  }
+
+  const { weekStart, employeeName, amount, paymentMethod, note, businessId } = parsed.data
+  if (businessId) {
+    return NextResponse.json(
+      { error: "Ödemeyi Tüm İşletmeler görünümünden kaydedin" },
+      { status: 400 }
+    )
+  }
+  const todayInIstanbul = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Istanbul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date())
+  if (!isCompletedPayrollWeek(weekStart, todayInIstanbul)) {
+    return NextResponse.json(
+      { error: "Yalnızca tamamlanmış haftalar için ödeme kaydedilebilir" },
+      { status: 400 }
+    )
+  }
+  const payroll = await calculatePayroll(weekStart, businessId)
+  const employee = payroll.employees.find(
+    (item) => item.name.toLocaleLowerCase("tr-TR") === employeeName.toLocaleLowerCase("tr-TR")
+  )
+  if (!employee) {
+    return NextResponse.json({ error: "Personel veya puantaj kaydı bulunamadı" }, { status: 404 })
+  }
+  if (amount > employee.remainingAmount + 0.001) {
+    return NextResponse.json(
+      { error: `Ödeme kalan ${employee.remainingAmount.toFixed(2)} ₺ tutarını aşamaz` },
+      { status: 400 }
+    )
+  }
+
+  const id = generateId()
+  const paidAt = new Date().toISOString()
+  try {
+    await ensureTab(TABS.PAYROLL_PAYMENTS, [
+      "id",
+      "haftaBaslangic",
+      "haftaBitis",
+      "personelAdi",
+      "isletme",
+      "tutar",
+      "odemeYontemi",
+      "not",
+      "odemeTarihi",
+      "kaydedenId",
+      "kaydedenAd",
+      "haftalikNet",
+      "saatlikUcret",
+      "normalSaat",
+      "mesaiSaat",
+    ])
+    await appendRow(TABS.PAYROLL_PAYMENTS, [
+      id,
+      weekStart,
+      payroll.weekEnd,
+      employee.name,
+      businessId ?? "",
+      amount,
+      paymentMethod,
+      note,
+      paidAt,
+      user.id,
+      user.name,
+      employee.netPay,
+      employee.hourlyRate,
+      employee.totalHours,
+      employee.totalOvertime,
+    ])
+  } catch {
+    return NextResponse.json(
+      { error: "MaasOdemeleri Sheet sekmesi oluşturulamadı veya yazılamadı" },
+      { status: 503 }
+    )
+  }
+
+  return NextResponse.json({ id, paidAt, amount }, { status: 201 })
 }

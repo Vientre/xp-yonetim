@@ -1,10 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollText, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react"
@@ -40,9 +38,8 @@ export default function LogsPage() {
   const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
   const [entityType, setEntityType] = useState("")
-  const [action, setAction] = useState("")
 
-  async function fetchLogs() {
+  const fetchLogs = useCallback(async () => {
     setLoading(true)
     const params = new URLSearchParams({ page: String(page), limit: "50" })
     if (entityType) params.set("entityType", entityType)
@@ -57,9 +54,9 @@ export default function LogsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [entityType, page])
 
-  useEffect(() => { fetchLogs() }, [page, entityType])
+  useEffect(() => { void fetchLogs() }, [fetchLogs])
 
   const entityTypes = [
     "DailyClosing", "ExpenseEntry", "MealOrder", "Employee", "AttendanceRecord",

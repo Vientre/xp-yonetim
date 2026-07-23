@@ -78,7 +78,13 @@ export default function UsersPage() {
 
     setLoading(true)
     try {
-      const body: any = { name, email, role, businesses: role === "admin" ? [] : selectedBizIds }
+      const body: {
+        name: string
+        email: string
+        role: string
+        businesses: string[]
+        password?: string
+      } = { name, email, role, businesses: role === "admin" ? [] : selectedBizIds }
       if (password) body.password = password
 
       const url = editingUser ? `/api/users/${editingUser.id}` : "/api/users"

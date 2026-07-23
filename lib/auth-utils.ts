@@ -5,8 +5,8 @@
 
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
-import { BUSINESSES } from "@/lib/constants"
 import type { Role } from "@/lib/constants"
+import { accessibleBusinessIds, canAccessBusiness } from "@/lib/access"
 
 export type { Role }
 
@@ -34,17 +34,12 @@ export async function requireRole(roles: Role[]): Promise<SessionUser> {
 
 /** Check if user can access a specific business. */
 export function hasBusinessAccess(user: SessionUser, businessId: string): boolean {
-  if (user.role === "admin") return true
-  if (user.businesses.includes("TUM")) return true
-  return user.businesses.includes(businessId)
+  return canAccessBusiness(user, businessId)
 }
 
 /** Return list of business IDs this user can access. */
 export function getAccessibleBusinessIds(user: SessionUser): string[] {
-  if (user.role === "admin" || user.businesses.includes("TUM")) {
-    return BUSINESSES.map((b) => b.id)
-  }
-  return user.businesses.filter((b) => BUSINESSES.some((biz) => biz.id === b))
+  return accessibleBusinessIds(user)
 }
 
 /** Get session user or return null (for API routes). */

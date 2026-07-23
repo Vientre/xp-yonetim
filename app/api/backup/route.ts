@@ -9,7 +9,7 @@
 import { NextResponse } from "next/server"
 import JSZip from "jszip"
 import { getAuthUser } from "@/lib/auth-utils"
-import { getAllRowsWithHeader } from "@/lib/sheets"
+import { getRowsBatch, getTabNames } from "@/lib/sheets"
 import { TABS } from "@/lib/constants"
 import { toCsv } from "@/lib/csv"
 
@@ -26,23 +26,25 @@ export async function GET() {
   const tabNames = Object.values(TABS)
   const results: Array<{ tab: string; rows: number; error?: string }> = []
 
-  // Her sekme için CSV oluştur, ZIP'e ekle
-  await Promise.all(
-    tabNames.map(async (tab) => {
-      try {
-        const rows = await getAllRowsWithHeader(tab)
-        const csv = toCsv(rows, ";")
-        // UTF-8 BOM ekle — Excel'de Türkçe için
-        zip.file(`${tab}.csv`, "﻿" + csv)
-        results.push({ tab, rows: Math.max(0, rows.length - 1) })
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Bilinmeyen hata"
-        results.push({ tab, rows: 0, error: msg })
-        // Sekme yoksa boş dosya ekle, devam et
-        zip.file(`${tab}.csv`, `# Bu sekme okunamadı: ${msg}`)
-      }
-    })
-  )
+  // Var olan sekmeleri tek Google Sheets isteğiyle oku.
+  const existingTabNames = new Set(await getTabNames())
+  const readableTabs = tabNames.filter((tab) => existingTabNames.has(tab))
+  const rowsByTab = await getRowsBatch(readableTabs, { includeHeader: true })
+
+  for (const tab of tabNames) {
+    if (!existingTabNames.has(tab)) {
+      const error = "Sekme bulunamadı"
+      results.push({ tab, rows: 0, error })
+      zip.file(`${tab}.csv`, `# Bu sekme okunamadı: ${error}`)
+      continue
+    }
+
+    const rows = rowsByTab[tab] ?? []
+    const csv = toCsv(rows, ";")
+    // UTF-8 BOM ekle — Excel'de Türkçe için
+    zip.file(`${tab}.csv`, "﻿" + csv)
+    results.push({ tab, rows: Math.max(0, rows.length - 1) })
+  }
 
   // README dosyası — yedek meta bilgisi
   const meta = [

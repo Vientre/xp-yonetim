@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { getAuthUser } from "@/lib/auth-utils"
-import { getRows, findRowById, updateRowByIndex, deleteRowByIndex } from "@/lib/sheets"
+import { findRowById, updateRowByIndex, deleteRowByIndex } from "@/lib/sheets"
 import { TABS } from "@/lib/constants"
 import bcrypt from "bcryptjs"
 import { z } from "zod"

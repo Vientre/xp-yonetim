@@ -6,7 +6,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <DashboardShell
-      userRole={user.role as any}
+      userRole={user.role}
       userName={user.name ?? ""}
       userEmail={user.email ?? ""}
     >

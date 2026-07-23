@@ -1,111 +1,180 @@
 # Google Sheets Kurulum Kılavuzu
 
-## ADIM 1 — Google Cloud Console
+Uygulama kalıcı verilerini tek bir Google Sheet dosyasındaki sekmelerde tutar. Sekme
+adları ve kolon sıraları uygulama koduyla eşleşmek zorundadır.
 
-1. https://console.cloud.google.com adresine gidin
-2. Yeni bir proje oluşturun (örn: "xp-muhasebe")
-3. Sol menüden **APIs & Services → Enable APIs** seçin
-4. **Google Sheets API** arayın ve etkinleştirin
-5. **APIs & Services → Credentials** → **Create Credentials → Service Account** seçin
-6. Service account adı girin (örn: "xp-muhasebe-sa")
-7. Oluşturulan service account'a tıklayın → **Keys** sekmesi → **Add Key → JSON** seçin
-8. JSON dosyası indirilir (bunu güvende tutun!)
+## 1. Google Cloud hazırlığı
 
-## ADIM 2 — Google Sheet Oluştur
+1. [Google Cloud Console](https://console.cloud.google.com) üzerinde bir proje oluşturun.
+2. `APIs & Services → Library` alanından Google Sheets API'yi etkinleştirin.
+3. `APIs & Services → Credentials` alanından bir service account oluşturun.
+4. Service account içinde `Keys → Add key → Create new key → JSON` yolunu izleyin.
+5. İndirilen JSON dosyasını güvenli bir yerde tutun; repoya eklemeyin.
 
-1. https://sheets.google.com adresinde yeni bir sheet oluşturun
-2. Sheet adı: "XP Muhasebe" (istediğiniz ad)
-3. URL'den Sheet ID'yi kopyalayın:
-   `https://docs.google.com/spreadsheets/d/` **BU_KISIM** `/edit`
+## 2. Google Sheet oluşturma
 
-## ADIM 3 — Sheet'i Service Account ile Paylaş
+1. Google Sheets üzerinde yeni bir dosya oluşturun.
+2. URL'deki `/d/` ile `/edit` arasındaki değeri `GOOGLE_SHEET_ID` olarak kullanın.
+3. Sheet'i JSON dosyasındaki `client_email` adresiyle paylaşın.
+4. Service account'a `Editor` yetkisi verin.
 
-1. Google Sheet'i açın → **Share** butonuna tıklayın
-2. JSON dosyasındaki `client_email` değerini yapıştırın
-3. **Editor** izni verin → **Share**
+## 3. Sekmeler ve kolonlar
 
-## ADIM 4 — Tab (Sayfa) Oluştur
+Her sekmenin ilk satırı başlık, veriler ikinci satırdan itibaren olmalıdır. Aşağıdaki
+adları ve sıraları aynen kullanın.
 
-Sheet'te aşağıdaki sekmeleri oluşturun (tam bu isimlerle):
+### `Kullanicilar`
 
-### Tab 1: `Kullanicilar`
-Sütun başlıklarını A1'den itibaren girin:
-```
+```text
 id | email | passwordHash | name | role | businesses
 ```
 
-### Tab 2: `GunlukGelir`
-```
-id | tarih | isletme | nakit | kart | bilet | toplamGelir | toplamGider | net | notlar | girenKisiId | girenKisiAdi | olusturmaTarihi
+### `GunlukGelir`
+
+```text
+id | tarih | isletme | nakit | kart | biletNakit | toplamGelir | toplamGider | net | notlar | girenKisiId | girenKisiAdi | olusturmaTarihi | biletKart | kasadanBankaya | bankadanKasaya
 ```
 
-### Tab 3: `Giderler`
-```
-id | gelirKayitId | kategoriId | kategoriAdi | aciklama | tutar
+### `Giderler`
+
+```text
+id | gelirKayitId | kategoriId | kategoriAdi | aciklama | tutar | odemeTipi
 ```
 
-### Tab 4: `Yemek`
-```
+### `Yemek`
+
+```text
 id | tarih | isletme | adet | fiyat | toplamTutar | girenKisiId | girenKisiAdi | olusturmaTarihi
 ```
 
-### Tab 5: `Puantaj`
-```
-id | tarih | personelAdi | isletme | durum | girenKisiId | girenKisiAdi | olusturmaTarihi
+### `Puantaj`
+
+```text
+id | tarih | personelAdi | isletme | saat | yemek | tip | kesinti | notlar | girenKisiId | girenKisiAdi | olusturmaTarihi | mesai
 ```
 
-### Tab 6: `Ayarlar`
-```
+### `Ayarlar`
+
+```text
 anahtar | deger
 ```
-İlk veri satırına ekleyin:
-```
+
+Önerilen başlangıç değerleri:
+
+```text
 yemekFiyati | 50
+saatlikUcret | 100
+uyariLimiti | 10000
 ```
 
-## ADIM 5 — Kullanıcı Ekle (Şifre Hash'i Üret)
+### `Personeller`
 
-Terminal'de şu komutu çalıştırın:
+```text
+id | ad | isletmeId | olusturmaTarihi | saatlikUcret | mesaiCarpani
+```
+
+`saatlikUcret` değeri `0` ise `Ayarlar` sekmesindeki ortak `saatlikUcret` kullanılır.
+
+### `MaasOdemeleri`
+
+```text
+id | haftaBaslangic | haftaBitis | personelAdi | isletme | tutar | odemeYontemi | not | odemeTarihi | kaydedenId | kaydedenAd | haftalikNet | saatlikUcret | normalSaat | mesaiSaat
+```
+
+Bu sekme ilk maaş ödemesinde uygulama tarafından otomatik oluşturulabilir. Elle
+oluşturulacaksa kolon sırasını değiştirmeyin.
+
+### `KursOgrenci`
+
+```text
+id | ad | aylikUcret | olusturmaTarihi | sinif
+```
+
+### `KursOdeme`
+
+```text
+id | ogrenciId | ay | odendi | tarih
+```
+
+`ay` alanı `YYYY-MM`, `odendi` alanı `true` veya `false` olmalıdır.
+
+### `KursGider`
+
+```text
+id | tarih | detay | tutar | olusturmaTarihi
+```
+
+### `Rezervasyonlar`
+
+```text
+id | tarih | gun | saat | not | telefon | ekleyenId | ekleyenAd | olusturmaTarihi | silindi | silenId | silenAd | silmeTarihi | durum | kisiSayisi | sure | musteriNotu
+```
+
+`durum` boş, `geldi`, `gelmedi` veya `iptal`; `sure` 30, 45 veya 60 olmalıdır.
+
+### `Hatirlatmalar`
+
+```text
+id | aktif | tip | isletme | baslik
+```
+
+`aktif` alanı `true` veya `false`, `tip` alanı `gunluk` veya `aylik` olmalıdır.
+
+## 4. İlk admin kullanıcısını oluşturma
+
+Güçlü bir şifre için bcrypt hash üretin:
+
 ```bash
-node -e "const bcrypt = require('bcryptjs'); Promise.all(['admin123','manager123','staff123'].map(p => bcrypt.hash(p,10))).then(h => h.forEach((h,i) => console.log(['admin123','manager123','staff123'][i], '->', h)))"
+node -e "require('bcryptjs').hash(process.argv[1], 10).then(console.log)" "guclu-sifreniz"
 ```
 
-Çıktıdaki hash değerlerini `Kullanicilar` tabına ekleyin:
+`Kullanicilar` sekmesine aşağıdaki yapıda bir satır ekleyin:
 
-| id | email | passwordHash | name | role | businesses |
-|---|---|---|---|---|---|
-| 1 | admin@sirket.com | $2b$10$... | Yönetici | admin | TUM |
-| 2 | mudur@sirket.com | $2b$10$... | Müdür | manager | TUM |
-| 3 | personel@sirket.com | $2b$10$... | Personel | staff | xp-racing |
+```text
+1 | admin@sirket.com | ÜRETİLEN_HASH | Yönetici | admin | TUM
+```
 
-**businesses değerleri:**
-- `TUM` → tüm işletmelere erişim
-- `kim-sahne` → sadece Kim Sahne
-- `xp-vr` → sadece XP VR
-- `xp-racing` → sadece XP Racing
-- `xp-laser` → sadece XP Laser
-- `xp-racing,xp-vr` → birden fazla (virgülle ayır)
+Roller:
 
-## ADIM 6 — .env.local Dosyasını Doldur
+- `admin`: tüm yönetim özellikleri
+- `manager`: izin verilen işletmelerde operasyon yönetimi
+- `staff`: günlük kayıt ve rezervasyon gibi sınırlı özellikler
+
+`businesses` değerleri:
+
+- `TUM`: bütün işletmeler
+- `kim-sahne`
+- `xp-vr`
+- `xp-racing`
+- `xp-laser`
+- Birden çok erişim için: `xp-racing,xp-vr`
+
+## 5. Ortam değişkenleri
+
+Service account JSON dosyasındaki değerleri `.env.local` içine aktarın:
 
 ```env
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=gizli-anahtar-buraya-uzun-rastgele-yaz
-
-GOOGLE_SHEET_ID=buraya-sheet-id-yapistir
-GOOGLE_SERVICE_ACCOUNT_EMAIL=service-account@proje.iam.gserviceaccount.com
-GOOGLE_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\nJSON_DOSYASINDAKI_KEY\n-----END RSA PRIVATE KEY-----\n"
+GOOGLE_SHEET_ID="sheet-id"
+GOOGLE_SERVICE_ACCOUNT_EMAIL="service-account@proje.iam.gserviceaccount.com"
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 ```
 
-**ÖNEMLI:** JSON dosyasındaki `private_key` değerini kopyalarken:
-- Başındaki ve sonundaki `"` işaretlerini dahil etme
-- `\n` karakterleri olduğu gibi kalmalı
+Özel anahtardaki `\n` karakterlerini koruyun. JSON anahtar dosyasını veya gerçek
+ortam değişkenlerini Git'e eklemeyin.
 
-## ADIM 7 — Uygulamayı Başlat
+## 6. Kontrol
+
+Uygulamayı başlatın:
 
 ```bash
 npm run dev
 ```
 
-Tarayıcıda http://localhost:3000 adresini açın.
-Login sayfasında e-posta ve şifrenizle girin.
+Admin hesabıyla giriş yaptıktan sonra:
+
+1. `/settings` sayfasının ayarları okuyabildiğini,
+2. `/daily-entry` üzerinden test kaydı oluşturulabildiğini,
+3. Kaydın ilgili Sheet sekmelerine yazıldığını,
+4. `/settings` üzerinden ZIP yedeği alınabildiğini
+
+kontrol edin.

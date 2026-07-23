@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { getRows } from "@/lib/sheets"
-import { TABS, BUSINESSES, getBusinessName } from "@/lib/constants"
+import { TABS, BUSINESSES } from "@/lib/constants"
 import { sendTelegramMessage, tl, trDate } from "@/lib/telegram"
 
 export const runtime = "nodejs"

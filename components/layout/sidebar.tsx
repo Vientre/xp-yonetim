@@ -13,7 +13,6 @@ import {
   BarChart3,
   Settings,
   Building2,
-  ScrollText,
   ChevronLeft,
   ChevronRight,
   Receipt,

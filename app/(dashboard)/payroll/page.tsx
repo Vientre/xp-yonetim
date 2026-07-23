@@ -1,349 +1,433 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Fragment, useCallback, useEffect, useState } from "react"
+import { addWeeks, format, startOfWeek, subWeeks } from "date-fns"
+import { tr } from "date-fns/locale"
+import { toast } from "sonner"
+import {
+  Banknote,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Clock,
+  Printer,
+  Users,
+  Wallet,
+} from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
-import { ChevronLeft, ChevronRight, Printer, ChevronDown, ChevronUp, Users, Clock, Wallet, TrendingUp } from "lucide-react"
-import { formatCurrency } from "@/lib/utils"
-import { format, addMonths, subMonths } from "date-fns"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { BUSINESSES } from "@/lib/constants"
+import { formatCurrency } from "@/lib/utils"
 
-const TR_MONTHS: Record<string, string> = {
-  "01": "Ocak", "02": "Şubat", "03": "Mart", "04": "Nisan",
-  "05": "Mayıs", "06": "Haziran", "07": "Temmuz", "08": "Ağustos",
-  "09": "Eylül", "10": "Ekim", "11": "Kasım", "12": "Aralık",
+type PaymentStatus = "bekliyor" | "kismi" | "odendi"
+
+interface PayrollRecord {
+  date: string
+  business: string
+  hours: number
+  meal: number
+  tip: number
+  deduction: number
+  overtime: number
+  notes: string
 }
-const TR_DAYS = ["Paz", "Pzt", "Sal", "Çar", "Per", "Cum", "Cmt"]
 
-function monthLabel(yyyyMM: string) {
-  const [year, month] = yyyyMM.split("-")
-  return `${TR_MONTHS[month] ?? month} ${year}`
-}
-
-interface Employee {
+interface EmployeePayroll {
   name: string
   businesses: string[]
   days: number
   totalHours: number
+  hourlyRate: number
   basePay: number
-  totalMesai: number
-  mesaiOdeme: number
+  totalOvertime: number
+  overtimeMultiplier: number
+  overtimePay: number
   totalMeal: number
   totalTip: number
   totalDeduction: number
   netPay: number
-  records: Array<{ date: string; business: string; hours: number; meal: number; tip: number; deduction: number; mesai: number; notes: string }>
+  paidAmount: number
+  remainingAmount: number
+  status: PaymentStatus
+  records: PayrollRecord[]
 }
 
 interface PayrollData {
-  employees: Employee[]
-  totals: { days: number; totalHours: number; basePay: number; totalMesai: number; mesaiOdeme: number; totalMeal: number; totalTip: number; totalDeduction: number; netPay: number }
-  saatlikUcret: number
-  month: string
+  weekStart: string
+  weekEnd: string
+  paymentDate: string
+  defaultHourlyRate: number
+  employees: EmployeePayroll[]
+  totals: {
+    employees: number
+    totalHours: number
+    netPay: number
+    paidAmount: number
+    remainingAmount: number
+  }
+}
+
+function previousWeekMonday(): string {
+  return format(startOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 1 }), "yyyy-MM-dd")
+}
+
+function moveWeek(weekStart: string, amount: number): string {
+  return format(addWeeks(new Date(`${weekStart}T12:00:00`), amount), "yyyy-MM-dd")
+}
+
+function trDate(iso: string): string {
+  return format(new Date(`${iso}T12:00:00`), "d MMMM yyyy", { locale: tr })
+}
+
+const statusLabels: Record<PaymentStatus, string> = {
+  bekliyor: "Bekliyor",
+  kismi: "Kısmi ödendi",
+  odendi: "Ödendi",
 }
 
 export default function PayrollPage() {
-  const [month, setMonth] = useState(format(new Date(), "yyyy-MM"))
+  const [weekStart, setWeekStart] = useState(previousWeekMonday)
   const [businessId, setBusinessId] = useState("all")
   const [data, setData] = useState<PayrollData | null>(null)
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [payingEmployee, setPayingEmployee] = useState<EmployeePayroll | null>(null)
+  const [paymentAmount, setPaymentAmount] = useState("")
+  const [paymentMethod, setPaymentMethod] = useState<"nakit" | "banka">("banka")
+  const [paymentNote, setPaymentNote] = useState("")
+  const [savingPayment, setSavingPayment] = useState(false)
+
+  const loadPayroll = useCallback(async () => {
+    const params = new URLSearchParams({ weekStart })
+    if (businessId !== "all") params.set("businessId", businessId)
+    const response = await fetch(`/api/payroll?${params}`)
+    const result = await response.json()
+    if (!response.ok) {
+      toast.error(result.error || "Bordro yüklenemedi")
+      setData(null)
+    } else {
+      setData(result)
+    }
+    setLoading(false)
+  }, [weekStart, businessId])
 
   useEffect(() => {
-    setLoading(true)
-    const params = new URLSearchParams({ month })
-    if (businessId !== "all") params.set("businessId", businessId)
-    fetch(`/api/payroll?${params}`)
-      .then((r) => r.json())
-      .then(setData)
-      .finally(() => setLoading(false))
-  }, [month, businessId])
+    void loadPayroll()
+  }, [loadPayroll])
 
-  function toggleExpand(name: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      next.has(name) ? next.delete(name) : next.add(name)
+  function changeWeek(next: string) {
+    setLoading(true)
+    setWeekStart(next)
+    setExpanded(new Set())
+  }
+
+  function changeBusiness(next: string) {
+    setLoading(true)
+    setBusinessId(next)
+  }
+
+  function toggleEmployee(name: string) {
+    setExpanded((current) => {
+      const next = new Set(current)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
       return next
     })
   }
 
-  function prevMonth() {
-    setMonth(format(subMonths(new Date(month + "-01"), 1), "yyyy-MM"))
-  }
-  function nextMonth() {
-    setMonth(format(addMonths(new Date(month + "-01"), 1), "yyyy-MM"))
+  function openPayment(employee: EmployeePayroll) {
+    setPayingEmployee(employee)
+    setPaymentAmount(employee.remainingAmount.toFixed(2))
+    setPaymentMethod("banka")
+    setPaymentNote("")
   }
 
-  const employees = data?.employees ?? []
+  async function savePayment(event: React.FormEvent) {
+    event.preventDefault()
+    if (!payingEmployee) return
+
+    const amount = Number(paymentAmount)
+    if (!Number.isFinite(amount) || amount <= 0 || amount > payingEmployee.remainingAmount) {
+      toast.error("Geçerli ve kalan tutarı aşmayan bir ödeme girin")
+      return
+    }
+
+    setSavingPayment(true)
+    try {
+      const response = await fetch("/api/payroll", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          weekStart,
+          employeeName: payingEmployee.name,
+          amount,
+          paymentMethod,
+          note: paymentNote,
+          businessId: businessId === "all" ? undefined : businessId,
+        }),
+      })
+      const result = await response.json()
+      if (!response.ok) {
+        toast.error(result.error || "Ödeme kaydedilemedi")
+        return
+      }
+      toast.success("Maaş ödemesi kaydedildi")
+      setPayingEmployee(null)
+      await loadPayroll()
+    } finally {
+      setSavingPayment(false)
+    }
+  }
+
   const totals = data?.totals
 
   return (
     <div className="space-y-6">
-      {/* Header - hidden in print */}
-      <div className="flex items-center justify-between flex-wrap gap-3 print:hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Maaş Bordrosu</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Puantaj kayıtlarından otomatik hesaplanır
-            {data?.saatlikUcret ? ` — Saatlik ücret: ${formatCurrency(data.saatlikUcret)}` : ""}
+          <h1 className="text-2xl font-bold text-gray-900">Haftalık Maaş</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Pazartesi–Pazar puantajı, takip eden Pazartesi ödenir
           </p>
         </div>
-        <Button onClick={() => window.print()} variant="outline">
-          <Printer className="h-4 w-4 mr-2" />
-          Yazdır / PDF
+        <Button variant="outline" onClick={() => window.print()}>
+          <Printer className="mr-2 h-4 w-4" />Yazdır / PDF
         </Button>
       </div>
 
-      {/* Print header - only visible in print */}
-      <div className="hidden print:block mb-6">
-        <h1 className="text-2xl font-bold">Maaş Bordrosu — {monthLabel(month)}</h1>
-        <p className="text-sm text-gray-600 mt-1">
-          Saatlik ücret: {formatCurrency(data?.saatlikUcret ?? 0)} | Toplam personel: {employees.length} | Oluşturulma: {format(new Date(), "dd.MM.yyyy HH:mm")}
-        </p>
-        <hr className="mt-3" />
+      <div className="hidden print:block">
+        <h1 className="text-2xl font-bold">Haftalık Maaş Bordrosu</h1>
+        {data && <p>{trDate(data.weekStart)} – {trDate(data.weekEnd)}</p>}
       </div>
 
-      {/* Filters - hidden in print */}
       <div className="flex flex-wrap items-center gap-3 print:hidden">
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={prevMonth}>
+          <Button variant="outline" size="icon" onClick={() => changeWeek(moveWeek(weekStart, -1))}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="text-sm font-semibold min-w-[130px] text-center">{monthLabel(month)}</span>
-          <Button variant="outline" size="icon" onClick={nextMonth}>
+          <div className="min-w-56 text-center">
+            <p className="text-sm font-semibold">
+              {data ? `${trDate(data.weekStart)} – ${trDate(data.weekEnd)}` : "Hafta yükleniyor"}
+            </p>
+            {data && <p className="text-xs text-muted-foreground">Ödeme: {trDate(data.paymentDate)}</p>}
+          </div>
+          <Button variant="outline" size="icon" onClick={() => changeWeek(moveWeek(weekStart, 1))}>
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
-        <Select value={businessId} onValueChange={setBusinessId}>
-          <SelectTrigger className="w-48">
-            <SelectValue />
-          </SelectTrigger>
+        <Button variant="secondary" onClick={() => changeWeek(previousWeekMonday())}>
+          Son tamamlanan hafta
+        </Button>
+        <Select value={businessId} onValueChange={changeBusiness}>
+          <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tüm İşletmeler</SelectItem>
-            {BUSINESSES.map((b) => (
-              <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+            {BUSINESSES.map((business) => (
+              <SelectItem key={business.id} value={business.id}>{business.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
 
-      {/* Summary Cards - hidden in print */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 print:hidden">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-5 print:hidden">
         {loading ? (
-          Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i}><CardContent className="p-4"><Skeleton className="h-10 w-full" /></CardContent></Card>
+          Array.from({ length: 5 }).map((_, index) => (
+            <Card key={index}><CardContent className="p-4"><Skeleton className="h-11" /></CardContent></Card>
           ))
         ) : (
           <>
-            <Card>
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                  <Users className="h-4 w-4 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Personel</p>
-                  <p className="text-xl font-bold">{employees.length}</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
-                  <Clock className="h-4 w-4 text-purple-600" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Toplam Saat</p>
-                  <p className="text-xl font-bold">{totals?.totalHours ?? 0}</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
-                  <Wallet className="h-4 w-4 text-green-600" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Taban Ücret</p>
-                  <p className="text-lg font-bold text-green-600">{formatCurrency(totals?.basePay ?? 0)}</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-orange-100 flex items-center justify-center flex-shrink-0">
-                  <TrendingUp className="h-4 w-4 text-orange-600" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Net Toplam</p>
-                  <p className="text-lg font-bold text-orange-600">{formatCurrency(totals?.netPay ?? 0)}</p>
-                </div>
-              </CardContent>
-            </Card>
+            <Summary icon={Users} label="Personel" value={String(totals?.employees ?? 0)} />
+            <Summary icon={Clock} label="Toplam Saat" value={String(totals?.totalHours ?? 0)} />
+            <Summary icon={Wallet} label="Net Hakediş" value={formatCurrency(totals?.netPay ?? 0)} />
+            <Summary icon={Banknote} label="Ödenen" value={formatCurrency(totals?.paidAmount ?? 0)} />
+            <Summary icon={Wallet} label="Kalan" value={formatCurrency(totals?.remainingAmount ?? 0)} accent />
           </>
         )}
       </div>
 
-      {/* Main Table */}
-      <Card className="print:shadow-none print:border-0">
-        <CardHeader className="print:py-2">
-          <CardTitle className="text-base">
-            {monthLabel(month)} Bordro Detayı
-            {data?.saatlikUcret && (
-              <span className="text-sm font-normal text-muted-foreground ml-2">
-                (Saatlik ücret: {formatCurrency(data.saatlikUcret)})
-              </span>
-            )}
-          </CardTitle>
+      <Card className="print:border-0 print:shadow-none">
+        <CardHeader>
+          <CardTitle className="text-base">Personel Hakedişleri</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
-            <div className="p-4 space-y-3">
-              {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+            <div className="space-y-3 p-4">
+              {Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-14" />)}
             </div>
-          ) : employees.length === 0 ? (
-            <p className="text-center py-12 text-muted-foreground">Bu ay puantaj kaydı yok</p>
+          ) : !data?.employees.length ? (
+            <p className="py-14 text-center text-muted-foreground">Bu hafta puantaj kaydı yok</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b bg-gray-50">
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground print:hidden w-8"></th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Personel</th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">İşletme</th>
-                    <th className="text-center px-3 py-3 font-medium text-muted-foreground">Gün</th>
-                    <th className="text-center px-3 py-3 font-medium text-muted-foreground">Saat</th>
-                    <th className="text-right px-3 py-3 font-medium text-muted-foreground">Taban</th>
-                    <th className="text-right px-3 py-3 font-medium text-muted-foreground hidden sm:table-cell">Mesai</th>
-                    <th className="text-right px-3 py-3 font-medium text-muted-foreground hidden sm:table-cell">Yemek</th>
-                    <th className="text-right px-3 py-3 font-medium text-muted-foreground hidden sm:table-cell">Tip</th>
-                    <th className="text-right px-3 py-3 font-medium text-muted-foreground hidden sm:table-cell">Kesinti</th>
-                    <th className="text-right px-4 py-3 font-medium text-muted-foreground font-semibold">Net</th>
+                  <tr className="border-b bg-slate-50 text-muted-foreground">
+                    <th className="w-8 px-3 py-3 print:hidden" />
+                    <th className="px-3 py-3 text-left">Personel</th>
+                    <th className="px-3 py-3 text-center">Gün</th>
+                    <th className="px-3 py-3 text-center">Saat</th>
+                    <th className="px-3 py-3 text-right">Saatlik</th>
+                    <th className="px-3 py-3 text-right">Mesai</th>
+                    <th className="px-3 py-3 text-right">Net</th>
+                    <th className="px-3 py-3 text-right">Ödenen</th>
+                    <th className="px-3 py-3 text-right">Kalan</th>
+                    <th className="px-3 py-3 text-center">Durum</th>
+                    <th className="px-3 py-3 print:hidden" />
                   </tr>
                 </thead>
                 <tbody>
-                  {employees.map((emp) => (
-                    <>
-                      <tr
-                        key={emp.name}
-                        className="border-b hover:bg-gray-50 cursor-pointer print:cursor-default"
-                        onClick={() => toggleExpand(emp.name)}
-                      >
-                        <td className="px-4 py-3 print:hidden">
-                          {expanded.has(emp.name)
-                            ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                            : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                  {data.employees.map((employee) => (
+                    <Fragment key={employee.name}>
+                      <tr className="border-b">
+                        <td className="px-3 py-3 print:hidden">
+                          <Button variant="ghost" size="icon" onClick={() => toggleEmployee(employee.name)}>
+                            {expanded.has(employee.name)
+                              ? <ChevronUp className="h-4 w-4" />
+                              : <ChevronDown className="h-4 w-4" />}
+                          </Button>
                         </td>
-                        <td className="px-4 py-3 font-semibold">{emp.name}</td>
-                        <td className="px-4 py-3 hidden md:table-cell">
-                          <div className="flex flex-wrap gap-1">
-                            {emp.businesses.map((b, i) => (
-                              <Badge key={i} variant="secondary" className="text-xs">{b}</Badge>
-                            ))}
-                          </div>
+                        <td className="px-3 py-3">
+                          <p className="font-semibold">{employee.name}</p>
+                          <p className="text-xs text-muted-foreground">{employee.businesses.join(", ")}</p>
                         </td>
-                        <td className="px-3 py-3 text-center text-sm">{emp.days}</td>
-                        <td className="px-3 py-3 text-center font-medium text-purple-700">{emp.totalHours}</td>
-                        <td className="px-3 py-3 text-right">{formatCurrency(emp.basePay)}</td>
-                        <td className="px-3 py-3 text-right text-orange-500 hidden sm:table-cell">
-                          {emp.totalMesai > 0 ? <span title={`${emp.totalMesai}s × 2x`}>{formatCurrency(emp.mesaiOdeme)}</span> : "—"}
+                        <td className="px-3 py-3 text-center">{employee.days}</td>
+                        <td className="px-3 py-3 text-center">{employee.totalHours}</td>
+                        <td className="px-3 py-3 text-right">{formatCurrency(employee.hourlyRate)}</td>
+                        <td className="px-3 py-3 text-right">
+                          {employee.totalOvertime > 0
+                            ? `${employee.totalOvertime}s / ${formatCurrency(employee.overtimePay)}`
+                            : "—"}
                         </td>
-                        <td className="px-3 py-3 text-right text-orange-600 hidden sm:table-cell">{formatCurrency(emp.totalMeal)}</td>
-                        <td className="px-3 py-3 text-right text-amber-600 hidden sm:table-cell">{formatCurrency(emp.totalTip)}</td>
-                        <td className="px-3 py-3 text-right text-red-500 hidden sm:table-cell">
-                          {emp.totalDeduction > 0 ? `−${formatCurrency(emp.totalDeduction)}` : "—"}
+                        <td className="px-3 py-3 text-right font-semibold">{formatCurrency(employee.netPay)}</td>
+                        <td className="px-3 py-3 text-right text-emerald-600">{formatCurrency(employee.paidAmount)}</td>
+                        <td className="px-3 py-3 text-right font-bold text-blue-700">{formatCurrency(employee.remainingAmount)}</td>
+                        <td className="px-3 py-3 text-center">
+                          <Badge variant={employee.status === "odendi" ? "success" : employee.status === "kismi" ? "warning" : "secondary"}>
+                            {statusLabels[employee.status]}
+                          </Badge>
                         </td>
-                        <td className="px-4 py-3 text-right">
-                          <span className="font-bold text-blue-700 text-base">{formatCurrency(emp.netPay)}</span>
+                        <td className="px-3 py-3 print:hidden">
+                          <Button
+                            size="sm"
+                            disabled={employee.remainingAmount <= 0 || businessId !== "all"}
+                            onClick={() => openPayment(employee)}
+                            title={businessId !== "all" ? "Ödeme için Tüm İşletmeler görünümünü seçin" : undefined}
+                          >
+                            Ödeme Yap
+                          </Button>
                         </td>
                       </tr>
-                      {/* Expanded daily records */}
-                      {expanded.has(emp.name) && (
-                        <tr key={`${emp.name}-detail`} className="print:hidden">
-                          <td colSpan={11} className="bg-slate-50 px-6 pb-4 pt-2">
-                            <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Günlük Kayıtlar</p>
-                            <table className="w-full text-xs border rounded overflow-hidden">
-                              <thead>
-                                <tr className="bg-white border-b">
-                                  <th className="text-left px-3 py-1.5 font-medium text-muted-foreground">Tarih</th>
-                                  <th className="text-left px-3 py-1.5 font-medium text-muted-foreground">İşletme</th>
-                                  <th className="text-center px-3 py-1.5 font-medium text-muted-foreground">Saat</th>
-                                  <th className="text-center px-3 py-1.5 font-medium text-muted-foreground">Mesai</th>
-                                  <th className="text-right px-3 py-1.5 font-medium text-muted-foreground">Yemek</th>
-                                  <th className="text-right px-3 py-1.5 font-medium text-muted-foreground">Tip</th>
-                                  <th className="text-right px-3 py-1.5 font-medium text-muted-foreground">Kesinti</th>
-                                  <th className="text-left px-3 py-1.5 font-medium text-muted-foreground">Not</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {emp.records.map((rec, i) => {
-                                  const d = new Date(rec.date)
-                                  return (
-                                    <tr key={i} className="border-b last:border-0 bg-white">
-                                      <td className="px-3 py-1.5">
-                                        {TR_DAYS[d.getDay()]} {d.getDate().toString().padStart(2, "0")}.{String(d.getMonth() + 1).padStart(2, "0")}
-                                      </td>
-                                      <td className="px-3 py-1.5 text-muted-foreground">{rec.business}</td>
-                                      <td className="px-3 py-1.5 text-center font-medium text-purple-700">{rec.hours}</td>
-                                      <td className="px-3 py-1.5 text-center text-orange-500">{rec.mesai > 0 ? `${rec.mesai}s` : "—"}</td>
-                                      <td className="px-3 py-1.5 text-right">{rec.meal > 0 ? formatCurrency(rec.meal) : "—"}</td>
-                                      <td className="px-3 py-1.5 text-right">{rec.tip > 0 ? formatCurrency(rec.tip) : "—"}</td>
-                                      <td className="px-3 py-1.5 text-right text-red-500">{rec.deduction > 0 ? `−${formatCurrency(rec.deduction)}` : "—"}</td>
-                                      <td className="px-3 py-1.5 text-muted-foreground">{rec.notes || "—"}</td>
-                                    </tr>
-                                  )
-                                })}
-                              </tbody>
-                            </table>
-                            <p className="text-xs text-muted-foreground mt-2">
-                              Taban: {emp.totalHours} saat × {formatCurrency(data?.saatlikUcret ?? 0)} = {formatCurrency(emp.basePay)}
-                              {emp.totalMesai > 0 && ` + Mesai: ${emp.totalMesai}s × 2 × ${formatCurrency(data?.saatlikUcret ?? 0)} = ${formatCurrency(emp.mesaiOdeme)}`}
-                              {emp.totalTip > 0 && ` + Tip ${formatCurrency(emp.totalTip)}`}
-                              {emp.totalDeduction > 0 && ` − Kesinti ${formatCurrency(emp.totalDeduction)}`}
-                              {" = "}<strong>Net {formatCurrency(emp.netPay)}</strong>
-                            </p>
+                      {expanded.has(employee.name) && (
+                        <tr className="border-b bg-slate-50 print:hidden">
+                          <td colSpan={11} className="px-6 py-4">
+                            <div className="mb-3 text-xs text-muted-foreground">
+                              Normal: {employee.totalHours}s × {formatCurrency(employee.hourlyRate)}
+                              {" + "}Mesai: {employee.totalOvertime}s × {employee.overtimeMultiplier}×
+                              {employee.totalTip > 0 && ` + Tip ${formatCurrency(employee.totalTip)}`}
+                              {employee.totalDeduction > 0 && ` − Kesinti ${formatCurrency(employee.totalDeduction)}`}
+                            </div>
+                            <div className="grid gap-2 md:grid-cols-2">
+                              {employee.records.map((record) => (
+                                <div key={`${record.date}-${record.business}`} className="rounded border bg-white p-3 text-xs">
+                                  <div className="flex justify-between font-medium">
+                                    <span>{trDate(record.date)} · {record.business}</span>
+                                    <span>{record.hours}s{record.overtime > 0 ? ` + ${record.overtime}s mesai` : ""}</span>
+                                  </div>
+                                  {record.notes && <p className="mt-1 text-muted-foreground">{record.notes}</p>}
+                                </div>
+                              ))}
+                            </div>
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   ))}
                 </tbody>
-                {totals && (
-                  <tfoot>
-                    <tr className="border-t-2 bg-slate-50 font-semibold">
-                      <td className="print:hidden" />
-                      <td className="px-4 py-3 font-bold">TOPLAM</td>
-                      <td className="hidden md:table-cell" />
-                      <td className="px-3 py-3 text-center">{totals.days}</td>
-                      <td className="px-3 py-3 text-center text-purple-700">{totals.totalHours}</td>
-                      <td className="px-3 py-3 text-right">{formatCurrency(totals.basePay)}</td>
-                      <td className="px-3 py-3 text-right text-orange-500 hidden sm:table-cell">
-                        {totals.mesaiOdeme > 0 ? formatCurrency(totals.mesaiOdeme) : "—"}
-                      </td>
-                      <td className="px-3 py-3 text-right text-orange-600 hidden sm:table-cell">{formatCurrency(totals.totalMeal)}</td>
-                      <td className="px-3 py-3 text-right text-amber-600 hidden sm:table-cell">{formatCurrency(totals.totalTip)}</td>
-                      <td className="px-3 py-3 text-right text-red-500 hidden sm:table-cell">
-                        {totals.totalDeduction > 0 ? `−${formatCurrency(totals.totalDeduction)}` : "—"}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="font-bold text-blue-700 text-lg">{formatCurrency(totals.netPay)}</span>
-                      </td>
-                    </tr>
-                  </tfoot>
-                )}
               </table>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Print footer */}
-      <div className="hidden print:block mt-8 text-xs text-gray-500 border-t pt-4">
-        <p>Saatlik ücret: {formatCurrency(data?.saatlikUcret ?? 0)} | Net = (Saat × Saatlik Ücret) + (Mesai × 2 × Saatlik Ücret) + Tip − Kesinti</p>
-        <p className="mt-1">Bu belge otomatik olarak oluşturulmuştur.</p>
-      </div>
+      <Dialog open={Boolean(payingEmployee)} onOpenChange={(open) => !open && setPayingEmployee(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Maaş Ödemesi</DialogTitle></DialogHeader>
+          {payingEmployee && (
+            <form onSubmit={savePayment} className="space-y-4">
+              <div className="rounded-lg bg-slate-50 p-4">
+                <p className="font-semibold">{payingEmployee.name}</p>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                  <span className="text-muted-foreground">Net hakediş</span>
+                  <span className="text-right">{formatCurrency(payingEmployee.netPay)}</span>
+                  <span className="text-muted-foreground">Daha önce ödenen</span>
+                  <span className="text-right">{formatCurrency(payingEmployee.paidAmount)}</span>
+                  <span className="font-medium">Kalan</span>
+                  <span className="text-right font-bold text-blue-700">{formatCurrency(payingEmployee.remainingAmount)}</span>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Ödenecek Tutar</Label>
+                <Input
+                  type="number"
+                  min="0.01"
+                  max={payingEmployee.remainingAmount}
+                  step="0.01"
+                  value={paymentAmount}
+                  onChange={(event) => setPaymentAmount(event.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Ödeme Yöntemi</Label>
+                <Select value={paymentMethod} onValueChange={(value: "nakit" | "banka") => setPaymentMethod(value)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="banka">Banka</SelectItem>
+                    <SelectItem value="nakit">Nakit</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Not</Label>
+                <Textarea value={paymentNote} onChange={(event) => setPaymentNote(event.target.value)} />
+              </div>
+              <Button type="submit" className="w-full" disabled={savingPayment}>
+                {savingPayment ? "Kaydediliyor..." : `${formatCurrency(Number(paymentAmount) || 0)} Öde`}
+              </Button>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
+  )
+}
+
+function Summary({
+  icon: Icon,
+  label,
+  value,
+  accent = false,
+}: {
+  icon: React.ElementType
+  label: string
+  value: string
+  accent?: boolean
+}) {
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-3 p-4">
+        <Icon className={`h-5 w-5 ${accent ? "text-blue-600" : "text-slate-500"}`} />
+        <div className="min-w-0">
+          <p className="text-xs text-muted-foreground">{label}</p>
+          <p className={`truncate font-bold ${accent ? "text-blue-700" : ""}`}>{value}</p>
+        </div>
+      </CardContent>
+    </Card>
   )
 }

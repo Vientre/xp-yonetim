@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthUser } from "@/lib/auth-utils"
-import { getRows, getSettings } from "@/lib/sheets"
+import { getRows, getRowsBatch, settingsFromRows } from "@/lib/sheets"
 import { TABS, getCategoryById, getBusinessName } from "@/lib/constants"
 
 export async function GET(req: NextRequest) {
@@ -24,12 +24,11 @@ export async function GET(req: NextRequest) {
 
   // ── GELİR GİDER ─────────────────────────────────────────────────────────────
   if (type === "income") {
-    const [gelirRows, giderRows] = await Promise.all([
-      getRows(TABS.DAILY_INCOME),
-      getRows(TABS.EXPENSES),
-    ])
+    const rows = await getRowsBatch([TABS.DAILY_INCOME, TABS.EXPENSES] as const)
+    const gelirRows = rows[TABS.DAILY_INCOME]
+    const giderRows = rows[TABS.EXPENSES]
 
-    let filtered = gelirRows.filter((r) => {
+    const filtered = gelirRows.filter((r) => {
       if (!r[0]) return false
       if (from && r[1] < from) return false
       if (to && r[1] > to) return false
@@ -74,14 +73,13 @@ export async function GET(req: NextRequest) {
 
   // ── PERSONEL ─────────────────────────────────────────────────────────────────
   if (type === "payroll") {
-    const [rows, settings] = await Promise.all([
-      getRows(TABS.ATTENDANCE),
-      getSettings(),
-    ])
+    const batch = await getRowsBatch([TABS.ATTENDANCE, TABS.SETTINGS] as const)
+    const rows = batch[TABS.ATTENDANCE]
+    const settings = settingsFromRows(batch[TABS.SETTINGS])
 
     const saatlikUcret = parseFloat(settings.saatlikUcret ?? "100")
 
-    let filtered = rows.filter((r) => {
+    const filtered = rows.filter((r) => {
       if (!r[0]) return false
       if (from && r[1] < from) return false
       if (to && r[1] > to) return false
@@ -119,7 +117,7 @@ export async function GET(req: NextRequest) {
   if (type === "meals") {
     const rows = await getRows(TABS.MEALS)
 
-    let filtered = rows.filter((r) => {
+    const filtered = rows.filter((r) => {
       if (!r[0]) return false
       if (from && r[1] < from) return false
       if (to && r[1] > to) return false

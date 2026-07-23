@@ -6,6 +6,7 @@
  *
  * Known keys:
  *   yemekFiyati  - meal price per person (default: 50)
+ *   saatlikUcret - default hourly wage when employee-specific rate is 0 (default: 100)
  *   uyariLimiti  - high amount warning threshold (default: 10000)
  */
 
@@ -23,6 +24,7 @@ export async function GET() {
   // Return with defaults for missing keys
   return NextResponse.json({
     yemekFiyati: settings.yemekFiyati ?? "50",
+    saatlikUcret: settings.saatlikUcret ?? "100",
     uyariLimiti: settings.uyariLimiti ?? "10000",
     ...settings,
   })

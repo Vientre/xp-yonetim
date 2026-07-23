@@ -15,7 +15,7 @@
 
 import { NextRequest, NextResponse, after } from "next/server"
 import { getAuthUser, hasBusinessAccess, getAccessibleBusinessIds } from "@/lib/auth-utils"
-import { getRows, appendRow, generateId } from "@/lib/sheets"
+import { getRows, getRowsBatch, appendRow, generateId } from "@/lib/sheets"
 import { TABS, getCategoryById, getBusinessName } from "@/lib/constants"
 import { tl, trDate } from "@/lib/telegram"
 import { sendWhatsAppMessage } from "@/lib/whatsapp"
@@ -89,10 +89,9 @@ export async function GET(req: NextRequest) {
 
   const accessibleIds = getAccessibleBusinessIds(user)
 
-  const [gelirRows, giderRows] = await Promise.all([
-    getRows(TABS.DAILY_INCOME),
-    getRows(TABS.EXPENSES),
-  ])
+  const rows = await getRowsBatch([TABS.DAILY_INCOME, TABS.EXPENSES] as const)
+  const gelirRows = rows[TABS.DAILY_INCOME]
+  const giderRows = rows[TABS.EXPENSES]
 
   let entries = gelirRows.map(parseGelirRow)
 

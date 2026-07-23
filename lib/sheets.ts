@@ -9,6 +9,7 @@
  */
 
 import { google } from "googleapis"
+import { randomUUID } from "node:crypto"
 import { TABS } from "@/lib/constants"
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
@@ -35,6 +36,43 @@ const SHEET_ID = () => {
   return id
 }
 
+type SheetMetadataCache = {
+  spreadsheetId: string
+  expiresAt: number
+  idsByTitle: Map<string, number>
+}
+
+let sheetMetadataCache: SheetMetadataCache | null = null
+
+async function getSheetIds(forceRefresh = false): Promise<Map<string, number>> {
+  const spreadsheetId = SHEET_ID()
+  if (
+    !forceRefresh &&
+    sheetMetadataCache?.spreadsheetId === spreadsheetId &&
+    sheetMetadataCache.expiresAt > Date.now()
+  ) {
+    return sheetMetadataCache.idsByTitle
+  }
+
+  const sheets = await getSheets()
+  const spreadsheet = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: "sheets.properties(sheetId,title)",
+  })
+  const idsByTitle = new Map<string, number>()
+  for (const sheet of spreadsheet.data.sheets ?? []) {
+    const title = sheet.properties?.title
+    const sheetId = sheet.properties?.sheetId
+    if (title && typeof sheetId === "number") idsByTitle.set(title, sheetId)
+  }
+  sheetMetadataCache = {
+    spreadsheetId,
+    expiresAt: Date.now() + 60_000,
+    idsByTitle,
+  }
+  return idsByTitle
+}
+
 // ─── Base operations ─────────────────────────────────────────────────────────
 
 /**
@@ -45,7 +83,7 @@ export async function getRows(tab: string): Promise<string[][]> {
   const sheets = await getSheets()
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SHEET_ID(),
-    range: `${tab}!A2:Z2000`,
+    range: `${quoteTab(tab)}!A2:Z`,
   })
   return (res.data.values ?? []) as string[][]
 }
@@ -58,9 +96,86 @@ export async function getAllRowsWithHeader(tab: string): Promise<string[][]> {
   const sheets = await getSheets()
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SHEET_ID(),
-    range: `${tab}!A1:Z2000`,
+    range: `${quoteTab(tab)}!A1:Z`,
   })
   return (res.data.values ?? []) as string[][]
+}
+
+function quoteTab(tab: string): string {
+  return `'${tab.replace(/'/g, "''")}'`
+}
+
+function columnName(columnCount: number): string {
+  if (columnCount < 1) throw new Error("En az bir sütun gerekli")
+  let value = columnCount
+  let result = ""
+  while (value > 0) {
+    value -= 1
+    result = String.fromCharCode(65 + (value % 26)) + result
+    value = Math.floor(value / 26)
+  }
+  return result
+}
+
+/**
+ * Read multiple tabs in one Google Sheets request.
+ * The returned object always contains every requested tab, using [] for empty tabs.
+ */
+export async function getRowsBatch<T extends readonly string[]>(
+  tabs: T,
+  options: { includeHeader?: boolean } = {}
+): Promise<Record<T[number], string[][]>> {
+  const result = {} as Record<T[number], string[][]>
+  if (tabs.length === 0) return result
+
+  const startRow = options.includeHeader ? 1 : 2
+  const sheets = await getSheets()
+  const response = await sheets.spreadsheets.values.batchGet({
+    spreadsheetId: SHEET_ID(),
+    ranges: tabs.map((tab) => `${quoteTab(tab)}!A${startRow}:Z`),
+  })
+
+  tabs.forEach((tab, index) => {
+    result[tab as T[number]] = (response.data.valueRanges?.[index]?.values ?? []) as string[][]
+  })
+  return result
+}
+
+/** Return the current spreadsheet's tab names. */
+export async function getTabNames(): Promise<string[]> {
+  return Array.from((await getSheetIds()).keys())
+}
+
+/**
+ * Ensure a tab exists. If it is missing, create it and write the header row.
+ * Safe to call before first use of a newly introduced feature.
+ */
+export async function ensureTab(tab: string, headers: string[]): Promise<void> {
+  const sheets = await getSheets()
+  const spreadsheetId = SHEET_ID()
+  const sheetIds = await getSheetIds()
+  if (sheetIds.has(tab)) return
+
+  try {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [{ addSheet: { properties: { title: tab } } }],
+      },
+    })
+  } catch (error) {
+    // A concurrent request may have created the same tab after our lookup.
+    const refreshed = await getSheetIds(true)
+    if (!refreshed.has(tab)) throw error
+  }
+  await getSheetIds(true)
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `${quoteTab(tab)}!A1`,
+    valueInputOption: "RAW",
+    requestBody: { values: [headers] },
+  })
 }
 
 /**
@@ -74,7 +189,7 @@ export async function appendRow(
   const sheets = await getSheets()
   await sheets.spreadsheets.values.append({
     spreadsheetId: SHEET_ID(),
-    range: `${tab}!A1`,
+    range: `${quoteTab(tab)}!A1`,
     valueInputOption: "USER_ENTERED",
     requestBody: { values: [values.map((v) => String(v ?? ""))] },
   })
@@ -90,9 +205,10 @@ export async function updateRowByIndex(
 ): Promise<void> {
   const sheets = await getSheets()
   const sheetRow = rowIndex + 2 // +1 for 1-indexed, +1 for header
+  const endColumn = columnName(values.length)
   await sheets.spreadsheets.values.update({
     spreadsheetId: SHEET_ID(),
-    range: `${tab}!A${sheetRow}`,
+    range: `${quoteTab(tab)}!A${sheetRow}:${endColumn}${sheetRow}`,
     valueInputOption: "USER_ENTERED",
     requestBody: { values: [values.map((v) => String(v ?? ""))] },
   })
@@ -105,10 +221,8 @@ export async function updateRowByIndex(
 export async function deleteRowsByIndices(tab: string, rowIndices: number[]): Promise<void> {
   if (rowIndices.length === 0) return
   const sheets = await getSheets()
-  const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID() })
-  const sheet = spreadsheet.data.sheets?.find((s) => s.properties?.title === tab)
-  if (!sheet) throw new Error(`Tab bulunamadı: ${tab}`)
-  const sheetId = sheet.properties?.sheetId
+  const sheetId = (await getSheetIds()).get(tab)
+  if (sheetId === undefined) throw new Error(`Tab bulunamadı: ${tab}`)
 
   // Sort descending so each deletion doesn't affect the indices of later rows
   const sorted = [...new Set(rowIndices)].sort((a, b) => b - a)
@@ -134,11 +248,8 @@ export async function deleteRowsByIndices(tab: string, rowIndices: number[]): Pr
  */
 export async function deleteRowByIndex(tab: string, rowIndex: number): Promise<void> {
   const sheets = await getSheets()
-  const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID() })
-  const sheet = spreadsheet.data.sheets?.find((s) => s.properties?.title === tab)
-  if (!sheet) throw new Error(`Tab bulunamadı: ${tab}`)
-
-  const sheetId = sheet.properties?.sheetId
+  const sheetId = (await getSheetIds()).get(tab)
+  if (sheetId === undefined) throw new Error(`Tab bulunamadı: ${tab}`)
   const startIndex = rowIndex + 1 // +1 for header row (0-indexed sheet rows)
 
   await sheets.spreadsheets.batchUpdate({
@@ -178,6 +289,11 @@ export async function findRowById(
 /** Read all key-value pairs from the Ayarlar tab. */
 export async function getSettings(): Promise<Record<string, string>> {
   const rows = await getRows(TABS.SETTINGS)
+  return settingsFromRows(rows)
+}
+
+/** Convert Ayarlar sheet rows into a key-value object. */
+export function settingsFromRows(rows: string[][]): Record<string, string> {
   const result: Record<string, string> = {}
   for (const row of rows) {
     if (row[0]) result[row[0]] = row[1] ?? ""
@@ -198,7 +314,7 @@ export async function setSetting(key: string, value: string): Promise<void> {
 
 // ─── ID generation ────────────────────────────────────────────────────────────
 
-/** Generate a unique ID using timestamp + random suffix. */
+/** Generate a collision-resistant record ID. */
 export function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  return randomUUID()
 }

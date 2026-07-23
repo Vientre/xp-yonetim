@@ -1,10 +1,6 @@
 /**
- * Next.js 16 Proxy (replaces deprecated middleware.ts)
- * Runs in Node.js runtime — no edge constraints.
- *
- * Auth strategy: check for the NextAuth session cookie existence.
- * JWT signature verification happens inside route handlers / server
- * components via lib/auth.ts — not here.
+ * Edge-compatible request guard for Cloudflare/OpenNext.
+ * JWT verification still happens in route handlers and server components.
  */
 
 import { NextResponse } from "next/server"
@@ -23,7 +19,7 @@ function hasSessionCookie(request: NextRequest): boolean {
   return SESSION_COOKIE_NAMES.some((name) => request.cookies.has(name))
 }
 
-export function proxy(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Always allow: static assets, images, API routes, login page

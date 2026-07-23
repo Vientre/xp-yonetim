@@ -10,36 +10,20 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   PlusCircle, Trash2, Save, ClipboardList,
-  TrendingUp, TrendingDown, AlertCircle, Pencil, X, ArrowLeftRight,
+  TrendingUp, TrendingDown, AlertCircle, X, ArrowLeftRight,
 } from "lucide-react"
 import { toast } from "sonner"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { formatCurrency } from "@/lib/utils"
 import { format } from "date-fns"
-
-interface Business { id: string; name: string }
-interface Category { id: string; name: string; color: string }
-interface Closing {
-  id: string
-  date: string
-  businessId: string
-  business: { name: string }
-  totalIncome: number
-  totalExpense: number
-  netAmount: number
-  status: string
-  cashIncome: number
-  cardIncome: number
-  ticketIncome: number
-  ticketCardIncome: number
-  kasadanBankaya: number
-  bankadanKasaya: number
-  notes: string
-  expenses: Array<{ id: string; categoryId: string; category: { name: string; color: string }; amount: number; description: string; paymentMethod?: string }>
-}
+import { RecentClosings } from "@/components/daily-entry/recent-closings"
+import type {
+  Business,
+  DailyClosing as Closing,
+  ExpenseCategory as Category,
+} from "@/components/daily-entry/types"
 
 const expenseRow = z.object({
   categoryId: z.string().min(1, "Kategori seçin"),
@@ -62,6 +46,13 @@ const formSchema = z.object({
 })
 
 type FormData = z.infer<typeof formSchema>
+type FormInput = z.input<typeof formSchema>
+type ExpenseResponse = {
+  categoryId: string
+  amount: number
+  description?: string
+  paymentMethod?: string
+}
 
 export default function DailyEntryPage() {
   const [businesses, setBusinesses] = useState<Business[]>([])
@@ -71,8 +62,8 @@ export default function DailyEntryPage() {
   const [fetching, setFetching] = useState(true)
   const [editingId, setEditingId] = useState<string | null>(null)
 
-  const { register, handleSubmit, watch, setValue, reset, control, formState: { errors } } = useForm<FormData>({
-    resolver: zodResolver(formSchema) as any,
+  const { register, handleSubmit, watch, setValue, reset, control, formState: { errors } } = useForm<FormInput, unknown, FormData>({
+    resolver: zodResolver(formSchema),
     defaultValues: {
       businessId: "", date: format(new Date(), "yyyy-MM-dd"),
       cashIncome: "", cardIncome: "", ticketIncome: "", ticketCardIncome: "",
@@ -101,7 +92,7 @@ export default function DailyEntryPage() {
       setRecentClosings(closings)
       if (biz.length === 1) setValue("businessId", biz[0].id)
     }).finally(() => setFetching(false))
-  }, [])
+  }, [setValue])
 
   function refreshList() {
     fetch("/api/daily-closings?limit=20").then((r) => r.json()).then(setRecentClosings)
@@ -132,7 +123,7 @@ export default function DailyEntryPage() {
       kasadanBankaya: String(data.kasadanBankaya || ""),
       bankadanKasaya: String(data.bankadanKasaya || ""),
       notes: data.notes ?? "",
-      expenses: (data.expenses ?? []).map((e: any) => ({
+      expenses: (data.expenses ?? []).map((e: ExpenseResponse) => ({
         categoryId: e.categoryId,
         amount: String(e.amount),
         description: e.description ?? "",
@@ -220,7 +211,7 @@ export default function DailyEntryPage() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Form */}
         <div className="xl:col-span-2">
-          <form onSubmit={handleSubmit(onSubmit as any)}>
+          <form onSubmit={handleSubmit(onSubmit)}>
             <Card className={editingId ? "border-amber-300 ring-1 ring-amber-300" : ""}>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -344,7 +335,7 @@ export default function DailyEntryPage() {
                   </div>
                   <p className="text-xs text-muted-foreground mt-2 bg-violet-50 border border-violet-100 rounded px-2.5 py-1.5">
                     💡 Transferler gelir/gider değildir — sadece Kasa ↔ Banka arasında iç hareketler.
-                    Aylık Tablo'da Kasa ve Banka bakiyelerini etkiler.
+                    Aylık Tablo&apos;da Kasa ve Banka bakiyelerini etkiler.
                   </p>
                 </div>
 
@@ -465,53 +456,12 @@ export default function DailyEntryPage() {
           </form>
         </div>
 
-        {/* Son Kayıtlar */}
-        <div>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Son Kayıtlar</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {recentClosings.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">Henüz kayıt yok</p>
-              ) : (
-                <div className="divide-y">
-                  {recentClosings.map((closing) => (
-                    <div key={closing.id} className={`px-4 py-3 hover:bg-gray-50 transition-colors ${editingId === closing.id ? "bg-amber-50" : ""}`}>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{closing.business.name}</p>
-                          <p className="text-xs text-muted-foreground">{formatDate(closing.date)}</p>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-xs text-green-600 font-medium">+{formatCurrency(Number(closing.totalIncome))}</p>
-                          <p className="text-xs text-red-500">-{formatCurrency(Number(closing.totalExpense))}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between mt-1.5">
-                        <span className={`text-xs font-semibold ${Number(closing.netAmount) >= 0 ? "text-green-600" : "text-red-600"}`}>
-                          {formatCurrency(Number(closing.netAmount))}
-                        </span>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-6 text-xs px-2 gap-1"
-                          onClick={() => editingId === closing.id ? cancelEdit() : loadForEdit(closing)}
-                        >
-                          {editingId === closing.id ? (
-                            <><X className="h-3 w-3" /> İptal</>
-                          ) : (
-                            <><Pencil className="h-3 w-3" /> Düzenle</>
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        <RecentClosings
+          closings={recentClosings}
+          editingId={editingId}
+          onEdit={(closing) => void loadForEdit(closing)}
+          onCancelEdit={cancelEdit}
+        />
       </div>
     </div>
   )
