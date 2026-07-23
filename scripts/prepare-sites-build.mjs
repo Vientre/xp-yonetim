@@ -1,10 +1,7 @@
-import { cp, mkdir, rm, writeFile } from "node:fs/promises"
+import { cp, mkdir, rm } from "node:fs/promises"
 
 await rm("dist", { recursive: true, force: true })
-await cp(".open-next", "dist", { recursive: true })
 await mkdir("dist/server", { recursive: true })
-await writeFile(
-  "dist/server/index.js",
-  'export { default } from "../worker.js"\n',
-  "utf8"
-)
+await cp(".open-next", "dist/server", { recursive: true })
+await cp(".open-next/worker.js", "dist/server/index.js")
+await cp(".open-next/assets", "dist/assets", { recursive: true })
