@@ -150,6 +150,7 @@ async function calculatePayroll(weekStart: string, businessId?: string | null) {
       overtimeHours: employee.totalOvertime,
       hourlyRate: employee.hourlyRate,
       overtimeMultiplier: employee.overtimeMultiplier,
+      meal: employee.totalMeal,
       tip: employee.totalTip,
       deduction: employee.totalDeduction,
       paidAmount: paidByEmployee.get(key) ?? 0,

@@ -330,6 +330,7 @@ export default function PayrollPage() {
                             <div className="mb-3 text-xs text-muted-foreground">
                               Normal: {employee.totalHours}s × {formatCurrency(employee.hourlyRate)}
                               {" + "}Mesai: {employee.totalOvertime}s × {employee.overtimeMultiplier}×
+                              {employee.totalMeal > 0 && ` + Yemek ${formatCurrency(employee.totalMeal)}`}
                               {employee.totalTip > 0 && ` + Tip ${formatCurrency(employee.totalTip)}`}
                               {employee.totalDeduction > 0 && ` − Kesinti ${formatCurrency(employee.totalDeduction)}`}
                             </div>
@@ -340,6 +341,13 @@ export default function PayrollPage() {
                                     <span>{trDate(record.date)} · {record.business}</span>
                                     <span>{record.hours}s{record.overtime > 0 ? ` + ${record.overtime}s mesai` : ""}</span>
                                   </div>
+                                  {(record.meal > 0 || record.tip > 0 || record.deduction > 0) && (
+                                    <p className="mt-1 text-muted-foreground">
+                                      {record.meal > 0 && `Yemek ${formatCurrency(record.meal)}`}
+                                      {record.tip > 0 && `${record.meal > 0 ? " · " : ""}Tip ${formatCurrency(record.tip)}`}
+                                      {record.deduction > 0 && `${record.meal > 0 || record.tip > 0 ? " · " : ""}Kesinti −${formatCurrency(record.deduction)}`}
+                                    </p>
+                                  )}
                                   {record.notes && <p className="mt-1 text-muted-foreground">{record.notes}</p>}
                                 </div>
                               ))}

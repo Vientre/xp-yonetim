@@ -20,12 +20,13 @@ test("ay ve yıl sınırlarında tarih hesabı bozulmaz", () => {
   assert.equal(addIsoDays("2027-01-03", 1), "2027-01-04")
 })
 
-test("normal ücret, mesai, tip ve kesinti doğru hesaplanır", () => {
+test("normal ücret, mesai, yemek, tip ve kesinti doğru hesaplanır", () => {
   const result = calculatePay({
     hours: 40,
     overtimeHours: 3,
     hourlyRate: 125,
     overtimeMultiplier: 2,
+    meal: 400,
     tip: 250,
     deduction: 100,
     paidAmount: 0,
@@ -34,9 +35,9 @@ test("normal ücret, mesai, tip ve kesinti doğru hesaplanır", () => {
   assert.deepEqual(result, {
     basePay: 5000,
     overtimePay: 750,
-    netPay: 5900,
+    netPay: 6300,
     paidAmount: 0,
-    remainingAmount: 5900,
+    remainingAmount: 6300,
     status: "bekliyor",
   })
 })
@@ -47,6 +48,7 @@ test("kısmi ve tam ödeme durumları doğru belirlenir", () => {
     overtimeHours: 0,
     hourlyRate: 100,
     overtimeMultiplier: 2,
+    meal: 0,
     tip: 0,
     deduction: 0,
   }
