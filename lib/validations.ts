@@ -90,6 +90,7 @@ export const attendanceSchema = z.object({
   tipIncluded: z.boolean().default(false),
   tipAmount: z.number().min(0).optional().nullable(),
   bonusAmount: z.number().min(0).optional().nullable(),
+  repairAmount: z.number().min(0).optional().nullable(),
   deductionAmount: z.number().min(0).optional().nullable(),
   notes: z.string().optional(),
 })

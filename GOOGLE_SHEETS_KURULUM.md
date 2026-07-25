@@ -50,7 +50,7 @@ id | tarih | isletme | adet | fiyat | toplamTutar | girenKisiId | girenKisiAdi |
 ### `Puantaj`
 
 ```text
-id | tarih | personelAdi | isletme | saat | yemek | tip | kesinti | notlar | girenKisiId | girenKisiAdi | olusturmaTarihi | mesai
+id | tarih | personelAdi | isletme | saat | yemek | tip | kesinti | notlar | girenKisiId | girenKisiAdi | olusturmaTarihi | mesai | tamirat
 ```
 
 ### `Ayarlar`

@@ -32,7 +32,7 @@ export function AttendanceRecords({
           <CardContent className="p-0">
             <table className="w-full text-sm">
               <thead><tr className="border-b bg-gray-50">
-                {["Personel", "Saat", "Mesai", "Yemek", "Tip", "Kesinti"].map((heading, index) => (
+                {["Personel", "Saat", "Mesai", "Yemek", "Tip", "Tamirat", "Kesinti"].map((heading, index) => (
                   <th key={heading} className={`${index ? "text-right" : "text-left"} px-4 py-2 text-xs font-medium text-muted-foreground`}>{heading}</th>
                 ))}
               </tr></thead>
@@ -44,6 +44,7 @@ export function AttendanceRecords({
                     <td className="px-4 py-2 text-right text-xs text-orange-600">{total.mesai > 0 ? `${total.mesai}s` : "-"}</td>
                     <td className="px-4 py-2 text-right text-xs">{total.meal > 0 ? formatCurrency(total.meal) : "-"}</td>
                     <td className="px-4 py-2 text-right text-xs">{total.tip > 0 ? formatCurrency(total.tip) : "-"}</td>
+                    <td className="px-4 py-2 text-right text-xs text-emerald-600">{total.repair > 0 ? formatCurrency(total.repair) : "-"}</td>
                     <td className="px-4 py-2 text-right text-xs text-red-600">{total.deduction > 0 ? formatCurrency(total.deduction) : "-"}</td>
                   </tr>
                 ))}
@@ -59,13 +60,13 @@ export function AttendanceRecords({
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="border-b bg-gray-50">
-                {["Tarih", "Personel", "İşletme", "Saat", "Mesai", "Yemek", "Tip", "Kesinti", "Not"].map((heading, index) => (
-                  <th key={heading} className={`${index >= 3 && index <= 7 ? "text-right" : "text-left"} px-4 py-2 text-xs font-medium text-muted-foreground`}>{heading}</th>
+                {["Tarih", "Personel", "İşletme", "Saat", "Mesai", "Yemek", "Tip", "Tamirat", "Kesinti", "Not"].map((heading, index) => (
+                  <th key={heading} className={`${index >= 3 && index <= 8 ? "text-right" : "text-left"} px-4 py-2 text-xs font-medium text-muted-foreground`}>{heading}</th>
                 ))}
                 <th className="w-16 px-2 py-2" />
               </tr></thead>
               <tbody>
-                {entries.length === 0 ? <tr><td colSpan={10} className="py-10 text-center text-muted-foreground">Kayıt yok</td></tr> : entries.map((entry) => (
+                {entries.length === 0 ? <tr><td colSpan={11} className="py-10 text-center text-muted-foreground">Kayıt yok</td></tr> : entries.map((entry) => (
                   <tr key={entry.id} className={`border-b last:border-0 hover:bg-gray-50 ${editingId === entry.id ? "bg-amber-50" : ""}`}>
                     <td className="px-4 py-2.5 text-xs">{formatDate(entry.date)}</td>
                     <td className="px-4 py-2.5 text-xs font-medium">{entry.employeeName}</td>
@@ -74,6 +75,7 @@ export function AttendanceRecords({
                     <td className="px-4 py-2.5 text-right text-xs text-orange-600">{entry.mesai > 0 ? `${entry.mesai}s` : "-"}</td>
                     <td className="px-4 py-2.5 text-right text-xs">{entry.mealAmount > 0 ? formatCurrency(entry.mealAmount) : "-"}</td>
                     <td className="px-4 py-2.5 text-right text-xs">{entry.tipAmount > 0 ? formatCurrency(entry.tipAmount) : "-"}</td>
+                    <td className="px-4 py-2.5 text-right text-xs text-emerald-600">{entry.repairAmount > 0 ? formatCurrency(entry.repairAmount) : "-"}</td>
                     <td className="px-4 py-2.5 text-right text-xs text-red-600">{entry.deductionAmount > 0 ? formatCurrency(entry.deductionAmount) : "-"}</td>
                     <td className="px-4 py-2.5 text-xs text-muted-foreground">{entry.notes || "-"}</td>
                     <td className="px-2 py-2.5"><div className="flex gap-1">

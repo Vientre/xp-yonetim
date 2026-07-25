@@ -47,6 +47,7 @@ type PayrollRecord = {
   tip: number
   deduction: number
   overtime: number
+  repair: number
   notes: string
 }
 
@@ -59,6 +60,7 @@ type EmployeePayroll = {
   totalTip: number
   totalDeduction: number
   totalOvertime: number
+  totalRepair: number
   hourlyRate: number
   overtimeMultiplier: number
   records: PayrollRecord[]
@@ -106,6 +108,7 @@ async function calculatePayroll(weekStart: string, businessId?: string | null) {
       totalTip: 0,
       totalDeduction: 0,
       totalOvertime: 0,
+      totalRepair: 0,
       hourlyRate: rate.hourlyRate,
       overtimeMultiplier: rate.overtimeMultiplier,
       records: [],
@@ -116,6 +119,7 @@ async function calculatePayroll(weekStart: string, businessId?: string | null) {
     const tip = parseFloat(row[6] || "0")
     const deduction = parseFloat(row[7] || "0")
     const overtime = parseFloat(row[12] || "0")
+    const repair = parseFloat(row[13] || "0")
     current.days += 1
     current.businesses.add(row[3] ?? "")
     current.totalHours += hours
@@ -123,6 +127,7 @@ async function calculatePayroll(weekStart: string, businessId?: string | null) {
     current.totalTip += tip
     current.totalDeduction += deduction
     current.totalOvertime += overtime
+    current.totalRepair += repair
     current.records.push({
       date,
       business: getBusinessName(row[3] ?? ""),
@@ -131,6 +136,7 @@ async function calculatePayroll(weekStart: string, businessId?: string | null) {
       tip,
       deduction,
       overtime,
+      repair,
       notes: row[8] ?? "",
     })
     map.set(key, current)
@@ -151,6 +157,7 @@ async function calculatePayroll(weekStart: string, businessId?: string | null) {
       hourlyRate: employee.hourlyRate,
       overtimeMultiplier: employee.overtimeMultiplier,
       meal: employee.totalMeal,
+      repair: employee.totalRepair,
       tip: employee.totalTip,
       deduction: employee.totalDeduction,
       paidAmount: paidByEmployee.get(key) ?? 0,
@@ -167,6 +174,7 @@ async function calculatePayroll(weekStart: string, businessId?: string | null) {
       overtimeMultiplier: employee.overtimeMultiplier,
       overtimePay: pay.overtimePay,
       totalMeal: roundMoney(employee.totalMeal),
+      totalRepair: roundMoney(employee.totalRepair),
       totalTip: roundMoney(employee.totalTip),
       totalDeduction: roundMoney(employee.totalDeduction),
       netPay: pay.netPay,

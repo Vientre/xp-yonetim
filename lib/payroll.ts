@@ -34,6 +34,7 @@ export function calculatePay(input: {
   hourlyRate: number
   overtimeMultiplier: number
   meal: number
+  repair: number
   tip: number
   deduction: number
   paidAmount: number
@@ -43,7 +44,7 @@ export function calculatePay(input: {
     input.overtimeHours * input.hourlyRate * input.overtimeMultiplier
   )
   const netPay = roundMoney(
-    basePay + overtimePay + input.meal + input.tip - input.deduction
+    basePay + overtimePay + input.meal + input.repair + input.tip - input.deduction
   )
   const paidAmount = roundMoney(Math.max(0, input.paidAmount))
   const remainingAmount = roundMoney(Math.max(0, netPay - paidAmount))

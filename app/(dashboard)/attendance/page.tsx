@@ -132,6 +132,7 @@ export default function AttendancePage() {
             tipAmount: row.tipEnabled ? row.tipAmount : 0,
             deductionAmount: row.deductionEnabled ? row.deductionAmount : 0,
             mesai: row.mesaiEnabled ? row.mesai : 0,
+            repairAmount: row.repairEnabled ? row.repairAmount : 0,
             notes: row.notes,
           }),
         })
@@ -170,6 +171,7 @@ export default function AttendancePage() {
           tipAmount: editEntry.tipAmount,
           deductionAmount: editEntry.deductionAmount,
           mesai: editEntry.mesai,
+          repairAmount: editEntry.repairAmount,
           notes: editEntry.notes,
         }),
       })

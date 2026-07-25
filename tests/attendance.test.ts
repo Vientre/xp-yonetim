@@ -15,6 +15,7 @@ function entry(employeeName: string, hours: number, tip: number): AttendanceEntr
     tipAmount: tip,
     deductionAmount: 25,
     mesai: 1,
+    repairAmount: 75,
     notes: "",
   }
 }
@@ -32,6 +33,7 @@ test("personel puantaj toplamları çalışan bazında birleştirilir", () => {
     tip: 75,
     deduction: 50,
     mesai: 2,
+    repair: 150,
   })
   assert.equal(totals.Mehmet.hours, 4)
 })
@@ -41,5 +43,7 @@ test("yeni puantaj satırı güvenli varsayılanlarla oluşturulur", () => {
   assert.equal(row.hoursWorked, 8)
   assert.equal(row.mealEnabled, false)
   assert.equal(row.tipAmount, 0)
+  assert.equal(row.repairEnabled, false)
+  assert.equal(row.repairAmount, 0)
   assert.equal(row.employeeName, "")
 })

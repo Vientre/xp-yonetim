@@ -2,13 +2,13 @@
  * Attendance (Puantaj) API
  *
  * Google Sheet: "Puantaj" tab
- * Columns: id | tarih | personelAdi | isletme | saat | yemek | tip | kesinti | notlar | girenKisiId | girenKisiAdi | olusturmaTarihi | mesai
- * Index:   0  |   1   |      2     |    3    |   4  |   5   |  6  |    7    |    8   |      9      |      10      |       11        |  12
+ * Columns: id | tarih | personelAdi | isletme | saat | yemek | tip | kesinti | notlar | girenKisiId | girenKisiAdi | olusturmaTarihi | mesai | tamirat
+ * Index:   0  |   1   |      2     |    3    |   4  |   5   |  6  |    7    |    8   |      9      |      10      |       11        |  12   |   13
  */
 
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthUser, hasBusinessAccess, getAccessibleBusinessIds } from "@/lib/auth-utils"
-import { getRows, appendRow, generateId, deleteRowsByIndices } from "@/lib/sheets"
+import { getRows, appendRow, ensureTab, generateId, deleteRowsByIndices } from "@/lib/sheets"
 import { TABS, getBusinessName } from "@/lib/constants"
 import { z } from "zod"
 
@@ -21,8 +21,14 @@ const attendanceSchema = z.object({
   tipAmount: z.number().min(0).default(0),
   deductionAmount: z.number().min(0).default(0),
   mesai: z.number().min(0).default(0),
+  repairAmount: z.number().min(0).default(0),
   notes: z.string().optional(),
 })
+
+const attendanceHeaders = [
+  "id", "tarih", "personelAdi", "isletme", "saat", "yemek", "tip", "kesinti",
+  "notlar", "girenKisiId", "girenKisiAdi", "olusturmaTarihi", "mesai", "tamirat",
+]
 
 export async function GET(req: NextRequest) {
   const user = await getAuthUser()
@@ -52,6 +58,7 @@ export async function GET(req: NextRequest) {
     enteredBy: { name: row[10] ?? "" },
     createdAt: row[11] ?? "",
     mesai: parseFloat(row[12] || "0"),
+    repairAmount: parseFloat(row[13] || "0"),
   }))
 
   entries = entries.filter((e) => accessibleIds.includes(e.businessId))
@@ -73,7 +80,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
 
-  const { businessId, date, employeeName, hoursWorked, mealAmount, tipAmount, deductionAmount, mesai, notes } = parsed.data
+  const { businessId, date, employeeName, hoursWorked, mealAmount, tipAmount, deductionAmount, mesai, repairAmount, notes } = parsed.data
 
   if (!hasBusinessAccess(user, businessId)) {
     return NextResponse.json({ error: "Bu işletmeye erişim yok" }, { status: 403 })
@@ -82,17 +89,18 @@ export async function POST(req: NextRequest) {
   const id = generateId()
   const createdAt = new Date().toISOString()
 
+  await ensureTab(TABS.ATTENDANCE, attendanceHeaders)
   await appendRow(TABS.ATTENDANCE, [
     id, date, employeeName, businessId,
     hoursWorked, mealAmount, tipAmount, deductionAmount,
-    notes ?? "", user.id, user.name, createdAt, mesai,
+    notes ?? "", user.id, user.name, createdAt, mesai, repairAmount,
   ])
 
   return NextResponse.json(
     {
       id, date, employeeName, businessId,
       business: { id: businessId, name: getBusinessName(businessId) },
-      hoursWorked, mealAmount, tipAmount, deductionAmount, mesai,
+      hoursWorked, mealAmount, tipAmount, deductionAmount, mesai, repairAmount,
       notes: notes ?? "",
       enteredBy: { name: user.name }, createdAt,
     },

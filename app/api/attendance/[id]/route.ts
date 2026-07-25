@@ -17,6 +17,7 @@ const patchSchema = z.object({
   tipAmount: z.number().min(0).default(0),
   deductionAmount: z.number().min(0).default(0),
   mesai: z.number().min(0).default(0),
+  repairAmount: z.number().min(0).default(0),
   notes: z.string().optional().default(""),
 })
 
@@ -42,18 +43,18 @@ export async function PATCH(
   const parsed = patchSchema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
-  const { date, employeeName, hoursWorked, mealAmount, tipAmount, deductionAmount, mesai, notes } = parsed.data
+  const { date, employeeName, hoursWorked, mealAmount, tipAmount, deductionAmount, mesai, repairAmount, notes } = parsed.data
 
   await updateRowByIndex(TABS.ATTENDANCE, result.index, [
     id, date, employeeName, businessId,
     hoursWorked, mealAmount, tipAmount, deductionAmount,
-    notes, user.id, user.name, result.row[11] ?? new Date().toISOString(), mesai,
+    notes, user.id, user.name, result.row[11] ?? new Date().toISOString(), mesai, repairAmount,
   ])
 
   return NextResponse.json({
     id, date, employeeName, businessId,
     business: { id: businessId, name: getBusinessName(businessId) },
-    hoursWorked, mealAmount, tipAmount, deductionAmount, mesai,
+    hoursWorked, mealAmount, tipAmount, deductionAmount, mesai, repairAmount,
     notes, enteredBy: { name: user.name },
   })
 }

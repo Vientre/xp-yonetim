@@ -37,6 +37,7 @@ interface PayrollRecord {
   tip: number
   deduction: number
   overtime: number
+  repair: number
   notes: string
 }
 
@@ -51,6 +52,7 @@ interface EmployeePayroll {
   overtimeMultiplier: number
   overtimePay: number
   totalMeal: number
+  totalRepair: number
   totalTip: number
   totalDeduction: number
   netPay: number
@@ -331,6 +333,7 @@ export default function PayrollPage() {
                               Normal: {employee.totalHours}s × {formatCurrency(employee.hourlyRate)}
                               {" + "}Mesai: {employee.totalOvertime}s × {employee.overtimeMultiplier}×
                               {employee.totalMeal > 0 && ` + Yemek ${formatCurrency(employee.totalMeal)}`}
+                              {employee.totalRepair > 0 && ` + Tamirat ${formatCurrency(employee.totalRepair)}`}
                               {employee.totalTip > 0 && ` + Tip ${formatCurrency(employee.totalTip)}`}
                               {employee.totalDeduction > 0 && ` − Kesinti ${formatCurrency(employee.totalDeduction)}`}
                             </div>
@@ -341,11 +344,12 @@ export default function PayrollPage() {
                                     <span>{trDate(record.date)} · {record.business}</span>
                                     <span>{record.hours}s{record.overtime > 0 ? ` + ${record.overtime}s mesai` : ""}</span>
                                   </div>
-                                  {(record.meal > 0 || record.tip > 0 || record.deduction > 0) && (
+                                  {(record.meal > 0 || record.repair > 0 || record.tip > 0 || record.deduction > 0) && (
                                     <p className="mt-1 text-muted-foreground">
                                       {record.meal > 0 && `Yemek ${formatCurrency(record.meal)}`}
-                                      {record.tip > 0 && `${record.meal > 0 ? " · " : ""}Tip ${formatCurrency(record.tip)}`}
-                                      {record.deduction > 0 && `${record.meal > 0 || record.tip > 0 ? " · " : ""}Kesinti −${formatCurrency(record.deduction)}`}
+                                      {record.repair > 0 && `${record.meal > 0 ? " · " : ""}Tamirat ${formatCurrency(record.repair)}`}
+                                      {record.tip > 0 && `${record.meal > 0 || record.repair > 0 ? " · " : ""}Tip ${formatCurrency(record.tip)}`}
+                                      {record.deduction > 0 && `${record.meal > 0 || record.repair > 0 || record.tip > 0 ? " · " : ""}Kesinti −${formatCurrency(record.deduction)}`}
                                     </p>
                                   )}
                                   {record.notes && <p className="mt-1 text-muted-foreground">{record.notes}</p>}

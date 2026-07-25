@@ -15,6 +15,7 @@ export interface AttendanceEntry {
   tipAmount: number
   deductionAmount: number
   mesai: number
+  repairAmount: number
   notes: string
 }
 
@@ -30,6 +31,8 @@ export interface EntryRow {
   deductionAmount: number
   mesaiEnabled: boolean
   mesai: number
+  repairEnabled: boolean
+  repairAmount: number
   notes: string
 }
 
@@ -39,4 +42,5 @@ export interface EmployeeAttendanceTotal {
   tip: number
   deduction: number
   mesai: number
+  repair: number
 }

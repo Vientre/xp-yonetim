@@ -147,32 +147,32 @@ export async function getTabNames(): Promise<string[]> {
 }
 
 /**
- * Ensure a tab exists. If it is missing, create it and write the header row.
+ * Ensure a tab exists and its header row matches the supplied columns.
  * Safe to call before first use of a newly introduced feature.
  */
 export async function ensureTab(tab: string, headers: string[]): Promise<void> {
   const sheets = await getSheets()
   const spreadsheetId = SHEET_ID()
   const sheetIds = await getSheetIds()
-  if (sheetIds.has(tab)) return
-
-  try {
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: [{ addSheet: { properties: { title: tab } } }],
-      },
-    })
-  } catch (error) {
-    // A concurrent request may have created the same tab after our lookup.
-    const refreshed = await getSheetIds(true)
-    if (!refreshed.has(tab)) throw error
+  if (!sheetIds.has(tab)) {
+    try {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [{ addSheet: { properties: { title: tab } } }],
+        },
+      })
+    } catch (error) {
+      // A concurrent request may have created the same tab after our lookup.
+      const refreshed = await getSheetIds(true)
+      if (!refreshed.has(tab)) throw error
+    }
+    await getSheetIds(true)
   }
-  await getSheetIds(true)
 
   await sheets.spreadsheets.values.update({
     spreadsheetId,
-    range: `${quoteTab(tab)}!A1`,
+    range: `${quoteTab(tab)}!A1:${columnName(headers.length)}1`,
     valueInputOption: "RAW",
     requestBody: { values: [headers] },
   })

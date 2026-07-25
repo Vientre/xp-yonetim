@@ -77,6 +77,7 @@ export function AttendanceForms({ editEntry, setEditEntry, saving, onEditSave, b
               { label: "Yemek", key: "mealAmount" as const },
               { label: "Tip", key: "tipAmount" as const },
               { label: "Kesinti", key: "deductionAmount" as const },
+              { label: "Tamirat", key: "repairAmount" as const },
               { label: "Mesai (saat)", key: "mesai" as const },
             ].map(({ label, key }) => (
               <div key={key} className="space-y-1">
@@ -215,6 +216,16 @@ export function AttendanceForms({ editEntry, setEditEntry, saving, onEditSave, b
                         className="w-16 h-6 text-xs text-right bg-white" />
                     )}
                     {row.mesaiEnabled && <span className="text-xs text-slate-500">s</span>}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Switch checked={row.repairEnabled} onCheckedChange={(v) => updateRow(i, { repairEnabled: v })} />
+                    <Label className="text-xs">Tamirat</Label>
+                    {row.repairEnabled && (
+                      <Input type="number" step="0.01" min="0"
+                        value={row.repairAmount}
+                        onChange={(e) => updateRow(i, { repairAmount: parseFloat(e.target.value) || 0 })}
+                        className="w-20 h-6 text-xs text-right bg-white" />
+                    )}
                   </div>
                 </div>
 
