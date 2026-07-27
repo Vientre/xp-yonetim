@@ -89,6 +89,10 @@ function trDate(iso: string): string {
   return format(new Date(`${iso}T12:00:00`), "d MMMM yyyy", { locale: tr })
 }
 
+function trDateWithWeekday(iso: string): string {
+  return format(new Date(`${iso}T12:00:00`), "d MMMM yyyy EEEE", { locale: tr })
+}
+
 const statusLabels: Record<PaymentStatus, string> = {
   bekliyor: "Bekliyor",
   kismi: "Kısmi ödendi",
@@ -341,7 +345,7 @@ export default function PayrollPage() {
                               {employee.records.map((record) => (
                                 <div key={`${record.date}-${record.business}`} className="rounded border bg-white p-3 text-xs">
                                   <div className="flex justify-between font-medium">
-                                    <span>{trDate(record.date)} · {record.business}</span>
+                                    <span>{trDateWithWeekday(record.date)} · {record.business}</span>
                                     <span>{record.hours}s{record.overtime > 0 ? ` + ${record.overtime}s mesai` : ""}</span>
                                   </div>
                                   {(record.meal > 0 || record.repair > 0 || record.tip > 0 || record.deduction > 0) && (
